@@ -1,0 +1,25 @@
+{{- if .Values.gateway.enabled }}
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ include "rig.fullname" . }}
+  labels:
+    {{- include "rig.labels" . | nindent 4 }}
+spec:
+  hostnames:
+    - {{ .Values.gateway.host }}
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: {{ .Values.gateway.gatewayName }}
+      namespace: {{ .Values.gateway.gatewayNamespace }}
+  rules:
+    - backendRefs:
+        - kind: Service
+          name: {{ include "rig.fullname" . }}
+          port: 4180
+      matches:
+        - path:
+            type: PathPrefix
+            value: /
+{{- end }}

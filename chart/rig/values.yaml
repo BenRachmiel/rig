@@ -1,0 +1,47 @@
+image:
+  repository: ghcr.io/benrachmiel/rig/images/rig
+  tag: latest
+  pullPolicy: IfNotPresent
+
+oauthProxy:
+  image:
+    repository: quay.io/oauth2-proxy/oauth2-proxy
+    tag: v7.9.0
+  issuerURL: ""
+  clientID: ""
+  redirectURL: ""
+  cookieName: _oauth2_proxy_rig
+  extraArgs: []
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 128Mi
+  limits:
+    memory: 256Mi
+
+gateway:
+  enabled: false
+  host: ""
+  gatewayName: main-gateway
+  gatewayNamespace: kube-system
+
+persistence:
+  music:
+    existingClaim: ""
+    storageClass: cephfs
+    size: 50Gi
+    accessMode: ReadWriteMany
+
+secrets:
+  existingSecret: ""
+  oauthClientSecret: ""
+  oauthCookieSecret: ""
+
+preamp:
+  enabled: true
+
+gain-downloader:
+  enabled: true
+
+extraObjects: []

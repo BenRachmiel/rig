@@ -1,0 +1,112 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "rig.fullname" . }}
+  labels:
+    {{- include "rig.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "rig.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "rig.selectorLabels" . | nindent 8 }}
+    spec:
+      securityContext:
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: rig
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            runAsNonRoot: true
+          ports:
+            - name: http
+              containerPort: 3000
+              protocol: TCP
+          env:
+            - name: PREAMP_ADMIN_URL
+              value: "http://preamp:4534"
+            - name: GAIN_URL
+              value: "http://gain-downloader:3000"
+            - name: MUSIC_DIR
+              value: /music
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: music
+              mountPath: /music
+        - name: oauth2-proxy
+          image: "{{ .Values.oauthProxy.image.repository }}:{{ .Values.oauthProxy.image.tag }}"
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            runAsNonRoot: true
+          ports:
+            - name: oauth-proxy
+              containerPort: 4180
+              protocol: TCP
+          readinessProbe:
+            httpGet:
+              path: /ping
+              port: oauth-proxy
+            initialDelaySeconds: 2
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              memory: 64Mi
+          args:
+            - --upstream=http://localhost:3000
+            - --http-address=0.0.0.0:4180
+            - --provider=oidc
+            - --oidc-issuer-url={{ required "oauthProxy.issuerURL is required" .Values.oauthProxy.issuerURL }}
+            - --client-id={{ required "oauthProxy.clientID is required" .Values.oauthProxy.clientID }}
+            - --redirect-url={{ required "oauthProxy.redirectURL is required" .Values.oauthProxy.redirectURL }}
+            - --cookie-name={{ .Values.oauthProxy.cookieName }}
+            - --cookie-secure=true
+            - --reverse-proxy=true
+            - --pass-user-headers=true
+            - --email-domain=*
+            {{- range .Values.oauthProxy.extraArgs }}
+            - {{ . | quote }}
+            {{- end }}
+          env:
+            - name: OAUTH2_PROXY_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "rig.secretName" . }}
+                  key: OAUTH2_PROXY_CLIENT_SECRET
+            - name: OAUTH2_PROXY_COOKIE_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "rig.secretName" . }}
+                  key: OAUTH2_PROXY_COOKIE_SECRET
+      volumes:
+        - name: music
+          persistentVolumeClaim:
+            {{- if .Values.persistence.music.existingClaim }}
+            claimName: {{ .Values.persistence.music.existingClaim }}
+            {{- else }}
+            claimName: {{ include "rig.fullname" . }}-music
+            {{- end }}

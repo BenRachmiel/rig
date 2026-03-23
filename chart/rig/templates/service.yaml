@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "rig.fullname" . }}
+  labels:
+    {{- include "rig.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - port: 4180
+      targetPort: oauth-proxy
+      protocol: TCP
+      name: http
+    - port: 3000
+      targetPort: http
+      protocol: TCP
+      name: rig
+  selector:
+    {{- include "rig.selectorLabels" . | nindent 4 }}

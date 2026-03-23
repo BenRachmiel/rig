@@ -1,0 +1,43 @@
+services:
+  gain-backend:
+    build: ../gain/backend/
+    environment:
+      SOURCE_API: ${SOURCE_API:?SOURCE_API must be set}
+      SOURCE_MIRRORS: ${SOURCE_MIRRORS:-${SOURCE_API}}
+      MUSIC_DIR: /music
+      MAX_CONCURRENT: "4"
+      BIND_ADDR: "0.0.0.0:3000"
+      PREAMP_SCAN_URL: http://preamp:4534/admin/scan
+    volumes:
+      - music:/music
+
+  preamp:
+    build: ../preamp/
+    environment:
+      PREAMP_MUSIC_DIR: /music
+      PREAMP_DATA_DIR: /data
+      PREAMP_LISTEN: ":4533"
+      PREAMP_ADMIN_LISTEN: ":4534"
+      PREAMP_NO_AUTH: "1"
+      PREAMP_ENCRYPTION_KEY: "00000000000000000000000000000000"
+    volumes:
+      - music:/music
+      - preamp-data:/data
+
+  rig:
+    build: .
+    environment:
+      GAIN_URL: http://gain-backend:3000
+      PREAMP_ADMIN_URL: http://preamp:4534
+      MUSIC_DIR: /music
+    ports:
+      - "3001:3001"
+    volumes:
+      - music:/music
+    depends_on:
+      - gain-backend
+      - preamp
+
+volumes:
+  music:
+  preamp-data:
