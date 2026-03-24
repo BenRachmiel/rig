@@ -73,13 +73,16 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
 
   helm:
-    needs: [lint]
+    needs: [lint, build]
     if: github.event_name == 'push' || github.event_name == 'repository_dispatch'
     runs-on: ubuntu-latest
     outputs:
       chart-version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: main
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: azure/setup-helm@v5
 
@@ -111,12 +114,13 @@ jobs:
             sed -i "/name: gain-downloader/{n;s/version: .*/version: \"$VERSION\"/}" chart/rig/Chart.yaml
           fi
 
-      - name: Commit chart changes
+      - name: Commit and push chart changes
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add chart/rig/Chart.yaml
           git diff --cached --quiet || git commit -m "chart: bump to $CHART_VERSION"
+          git push
 
       - name: Helm dependency update
         run: helm dependency update chart/rig
