@@ -13,8 +13,8 @@ async function proxy(
   const headers = new Headers();
   headers.set("content-type", request.headers.get("content-type") ?? "application/json");
 
-  // Forward auth header from upstream proxy
-  const remoteUser = incomingHeaders.get("remote-user");
+  // Forward auth header from upstream proxy (oauth2-proxy sends X-Forwarded-User)
+  const remoteUser = incomingHeaders.get("x-forwarded-user") || incomingHeaders.get("remote-user");
   if (remoteUser) headers.set("remote-user", remoteUser);
 
   const init: RequestInit = {
