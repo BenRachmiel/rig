@@ -33,6 +33,10 @@ interface AppState {
   lastEventId: number;
   logs: string[];
 
+  // UI
+  dockOpen: boolean;
+  dockTab: "preview" | "jobs";
+
   // Actions
   search: (q: string) => Promise<void>;
   startResolve: (albumId: number) => void;
@@ -51,6 +55,10 @@ interface AppState {
   loadExistingJobs: () => Promise<void>;
   setLastEventId: (id: number) => void;
   addLog: (msg: string) => void;
+
+  // UI
+  setDockOpen: (open: boolean) => void;
+  setDockTab: (tab: "preview" | "jobs") => void;
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -68,6 +76,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   sentTrackCount: 0,
   lastEventId: 0,
   logs: [],
+  dockOpen: false,
+  dockTab: "preview",
 
   search: async (q) => {
     set({ searchLoading: true, searchError: null });
@@ -186,6 +196,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         jobs,
         pendingJobId: resolved ? null : jobId,
         sentTrackCount: selectedTracks.length,
+        dockTab: "jobs" as const,
       };
     });
   },
@@ -275,4 +286,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   setLastEventId: (id) => set({ lastEventId: id }),
   addLog: (msg) =>
     set((s) => ({ logs: [...s.logs.slice(-499), msg] })),
+
+  setDockOpen: (open) => set({ dockOpen: open }),
+  setDockTab: (tab) => set({ dockTab: tab }),
 }));

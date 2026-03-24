@@ -37,6 +37,8 @@ spec:
           env:
             - name: PREAMP_ADMIN_URL
               value: "http://preamp:4534"
+            - name: PREAMP_URL
+              value: "http://preamp:4533"
             - name: GAIN_URL
               value: "http://gain-downloader:3000"
             - name: MUSIC_DIR
@@ -88,6 +90,8 @@ spec:
             - --reverse-proxy=true
             - --pass-user-headers=true
             - --email-domain=*
+            - --skip-auth-route=GET=^/rest/
+            - --skip-auth-route=POST=^/rest/
             {{- range .Values.oauthProxy.extraArgs }}
             - {{ . | quote }}
             {{- end }}

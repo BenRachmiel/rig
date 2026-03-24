@@ -26,9 +26,9 @@ export function SearchBar() {
         placeholder="Search albums..."
         className="flex-1"
       />
-      <Button onClick={handleSearch} disabled={searchLoading}>
-        <Search className="h-4 w-4 mr-1.5" />
-        Search
+      <Button onClick={handleSearch} disabled={searchLoading} size="icon" className="shrink-0 md:w-auto md:px-4">
+        <Search className="h-4 w-4 md:mr-1.5" />
+        <span className="hidden md:inline">Search</span>
       </Button>
     </div>
   );

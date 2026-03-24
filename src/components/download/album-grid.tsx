@@ -21,7 +21,7 @@ export function AlbumGrid() {
   if (albums.length === 0) return null;
 
   return (
-    <div className="grid grid-cols-[repeat(auto-fill,minmax(140px,1fr))] gap-3 mt-4">
+    <div className="grid grid-cols-2 sm:grid-cols-[repeat(auto-fill,minmax(140px,1fr))] gap-3 mt-4">
       {albums.map((album) => (
         <AlbumCard key={album.id} album={album} />
       ))}

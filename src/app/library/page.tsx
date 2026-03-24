@@ -1,13 +1,14 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import Link from "next/link";
 import { RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { StatCard } from "@/components/library/stat-card";
 import { IssueTable } from "@/components/library/issue-table";
 import { preampApi } from "@/lib/preamp-api";
 import * as libraryApi from "@/lib/library-api";
-import type { Stats, ScanStatus, IssuesResponse } from "@/types/api";
+import type { Stats, ScanStatus, IssuesResponse, LibraryEntry } from "@/types/api";
 
 type IssueKey =
   | "albums_missing_art"
@@ -35,14 +36,17 @@ export default function LibraryPage() {
   const [issueData, setIssueData] = useState<IssuesResponse | null>(null);
   const [issueOffset, setIssueOffset] = useState(0);
   const [loadingIssue, setLoadingIssue] = useState(false);
+  const [artists, setArtists] = useState<LibraryEntry[]>([]);
 
   const fetchStats = useCallback(async () => {
-    const [s, sc] = await Promise.all([
+    const [s, sc, browse] = await Promise.all([
       preampApi.stats(),
       libraryApi.scanStatus(),
+      libraryApi.browse(""),
     ]);
     setStats(s);
     setScan(sc);
+    setArtists(browse.entries.filter((e) => e.type === "directory"));
   }, []);
 
   useEffect(() => {
@@ -123,7 +127,7 @@ export default function LibraryPage() {
     : [];
 
   return (
-    <div className="max-w-4xl mx-auto px-6 py-6 flex flex-col gap-6">
+    <div className="max-w-4xl mx-auto px-4 py-4 md:px-6 md:py-6 flex flex-col gap-6">
       <div>
         <h1 className="text-xl font-semibold tracking-tight">
           Library Maintenance
@@ -140,6 +144,25 @@ export default function LibraryPage() {
             <StatCard label="Albums" value={stats.albums} />
             <StatCard label="Songs" value={stats.songs} />
           </div>
+
+          {artists.length > 0 && (
+            <div className="flex flex-col gap-2">
+              <h3 className="text-sm font-medium text-muted-foreground">
+                Artists
+              </h3>
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                {artists.map((a) => (
+                  <Link
+                    key={a.name}
+                    href={`/library/${encodeURIComponent(a.name)}`}
+                    className="rounded-lg border bg-card px-3 py-2 text-sm hover:bg-accent transition-colors truncate"
+                  >
+                    {a.name}
+                  </Link>
+                ))}
+              </div>
+            </div>
+          )}
 
           {issues.length > 0 && (
             <div className="flex flex-col gap-2">

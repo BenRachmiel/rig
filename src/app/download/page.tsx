@@ -45,7 +45,7 @@ export default function DownloadPage() {
   return (
     <div className="flex h-screen overflow-hidden">
       <div className="flex-1 overflow-y-auto">
-        <div className="max-w-5xl mx-auto px-6 py-6">
+        <div className="max-w-5xl mx-auto px-4 py-4 md:px-6 md:py-6">
           <h1 className="text-xl font-semibold tracking-tight mb-4">
             Download
           </h1>
@@ -54,16 +54,7 @@ export default function DownloadPage() {
         </div>
       </div>
 
-      <div className="w-[340px] shrink-0 border-l bg-card/50 h-full overflow-hidden flex flex-col">
-        <div className="p-4 pb-2">
-          <h2 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-            Queue
-          </h2>
-        </div>
-        <div className="flex-1 overflow-hidden px-4 pb-4">
-          <Dock />
-        </div>
-      </div>
+      <Dock />
 
       <JobToastWatcher />
     </div>

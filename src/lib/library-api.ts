@@ -41,6 +41,18 @@ export function coverUrl(file: string): string {
   return `${API}/cover?file=${encodeURIComponent(file)}`;
 }
 
+export function coverDirUrl(dir: string): string {
+  return `${API}/cover?dir=${encodeURIComponent(dir)}`;
+}
+
+export async function uploadCover(dir: string, file: File): Promise<void> {
+  const form = new FormData();
+  form.set("dir", dir);
+  form.set("image", file);
+  const res = await fetch(`${API}/cover`, { method: "POST", body: form });
+  if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
+}
+
 export async function scanStatus(): Promise<ScanStatus> {
   return json("/scan");
 }

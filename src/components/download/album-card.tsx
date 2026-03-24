@@ -12,6 +12,8 @@ export function AlbumCard({ album }: { album: Album }) {
   const resolvedCount = useAppStore((s) => s.resolvedCount);
   const totalTracks = useAppStore((s) => s.totalTracks);
   const startResolve = useAppStore((s) => s.startResolve);
+  const setDockTab = useAppStore((s) => s.setDockTab);
+  const setDockOpen = useAppStore((s) => s.setDockOpen);
 
   const isResolving = resolvingAlbumId === album.id;
   const ringOffset =
@@ -22,11 +24,13 @@ export function AlbumCard({ album }: { album: Album }) {
   const handleClick = () => {
     if (isResolving) return;
     startResolve(album.id);
+    setDockTab("preview");
+    setDockOpen(true);
   };
 
   return (
     <div
-      className={`group relative overflow-hidden rounded-lg border bg-card cursor-pointer transition-colors hover:border-muted-foreground/30 ${isResolving ? "pointer-events-none" : ""}`}
+      className={`group relative overflow-hidden rounded-lg border bg-card cursor-pointer transition-colors hover:border-muted-foreground/30 min-h-[44px] ${isResolving ? "pointer-events-none" : ""}`}
       onClick={handleClick}
     >
       {!imgError && album.cover ? (
