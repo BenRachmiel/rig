@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { headers as getHeaders } from "next/headers";
 import { resolveSafe } from "@/lib/safe-path";
 import { PREAMP_ADMIN_URL } from "@/lib/env";
 
@@ -73,7 +74,13 @@ export async function PATCH(request: NextRequest) {
     }
 
     // Trigger Preamp rescan
-    fetch(`${PREAMP_ADMIN_URL}/admin/scan`, { method: "POST" }).catch(() => {});
+    const h = await getHeaders();
+    const user = h.get("x-forwarded-user") || h.get("remote-user");
+    const scanHeaders: Record<string, string> = user ? { "remote-user": user } : {};
+    fetch(`${PREAMP_ADMIN_URL}/admin/scan`, {
+      method: "POST",
+      headers: scanHeaders,
+    }).catch(() => {});
 
     return Response.json({ ok: true });
   } catch (e) {
