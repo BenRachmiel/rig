@@ -6,7 +6,7 @@ appVersion: "0.1.0"
 type: application
 dependencies:
   - name: preamp
-    version: "0.2.0"
+    version: "0.2.1"
     repository: "oci://ghcr.io/benrachmiel/preamp/charts"
     condition: preamp.enabled
   - name: gain-downloader
