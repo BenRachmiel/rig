@@ -83,15 +83,40 @@ export function CreateCredentialDialog({ onCreated }: Props) {
               <DialogTitle>Credential Created</DialogTitle>
             </DialogHeader>
             <p className="text-sm text-muted-foreground">
-              Copy the secret below. It will not be shown again.
+              Copy the credentials below. They will not be shown again.
             </p>
-            <div className="flex items-center gap-2">
-              <code className="flex-1 rounded-md bg-muted px-3 py-2 text-sm font-mono break-all select-all">
-                {result.secret}
-              </code>
-              <Button size="icon" variant="outline" onClick={handleCopy}>
-                <Copy className="h-4 w-4" />
-              </Button>
+            {result.legacy_auth && (
+              <div className="flex flex-col gap-1">
+                <Label className="text-xs text-muted-foreground">Username</Label>
+                <div className="flex items-center gap-2">
+                  <code className="flex-1 rounded-md bg-muted px-3 py-2 text-sm font-mono break-all select-all">
+                    {result.username}
+                  </code>
+                  <Button
+                    size="icon"
+                    variant="outline"
+                    onClick={() => {
+                      navigator.clipboard.writeText(result.username);
+                      toast.success("Username copied");
+                    }}
+                  >
+                    <Copy className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            )}
+            <div className="flex flex-col gap-1">
+              <Label className="text-xs text-muted-foreground">
+                {result.legacy_auth ? "Password" : "API Key"}
+              </Label>
+              <div className="flex items-center gap-2">
+                <code className="flex-1 rounded-md bg-muted px-3 py-2 text-sm font-mono break-all select-all">
+                  {result.secret}
+                </code>
+                <Button size="icon" variant="outline" onClick={handleCopy}>
+                  <Copy className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
             <div className="rounded-md bg-amber-500/10 border border-amber-500/20 px-3 py-2 text-xs text-amber-500">
               This secret will not be shown again. Store it securely.
