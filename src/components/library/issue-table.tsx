@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Save, ExternalLink, Loader2, Wand2 } from "lucide-react";
+import { Save, Loader2, Wand2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -191,7 +191,14 @@ function SongIssueTable({
         <TableBody>
           {items.map((song, idx) => (
             <TableRow key={song.path}>
-              <TableCell className="font-medium">{song.title}</TableCell>
+              <TableCell className="font-medium">
+                <Link
+                  href={`/library/${encodeURIComponent(song.artist)}/${encodeURIComponent(song.album)}`}
+                  className="hover:underline"
+                >
+                  {song.title}
+                </Link>
+              </TableCell>
               <TableCell>
                 {isArtistType ? (
                   <Input
@@ -200,10 +207,22 @@ function SongIssueTable({
                     onChange={(e) => setEdit(idx, "artist", e.target.value)}
                   />
                 ) : (
-                  song.artist
+                  <Link
+                    href={`/library/${encodeURIComponent(song.artist)}`}
+                    className="hover:underline"
+                  >
+                    {song.artist}
+                  </Link>
                 )}
               </TableCell>
-              <TableCell>{song.album}</TableCell>
+              <TableCell>
+                <Link
+                  href={`/library/${encodeURIComponent(song.artist)}/${encodeURIComponent(song.album)}`}
+                  className="hover:underline"
+                >
+                  {song.album}
+                </Link>
+              </TableCell>
               <TableCell>
                 <Input
                   className="h-7 w-32"
@@ -279,26 +298,30 @@ function AlbumIssueTable({
             <TableHead className="w-20">Year</TableHead>
             <TableHead>Genre</TableHead>
             <TableHead className="w-16">Songs</TableHead>
-            <TableHead className="w-12" />
           </TableRow>
         </TableHeader>
         <TableBody>
           {items.map((album) => (
             <TableRow key={`${album.artist}/${album.name}`}>
-              <TableCell className="font-medium">{album.name}</TableCell>
-              <TableCell>{album.artist}</TableCell>
+              <TableCell className="font-medium">
+                <Link
+                  href={`/library/${encodeURIComponent(album.artist)}/${encodeURIComponent(album.name)}`}
+                  className="hover:underline"
+                >
+                  {album.name}
+                </Link>
+              </TableCell>
+              <TableCell>
+                <Link
+                  href={`/library/${encodeURIComponent(album.artist)}`}
+                  className="hover:underline"
+                >
+                  {album.artist}
+                </Link>
+              </TableCell>
               <TableCell>{album.year || "—"}</TableCell>
               <TableCell>{album.genre || "—"}</TableCell>
               <TableCell>{album.song_count}</TableCell>
-              <TableCell>
-                <Link
-                  href={`/library/${encodeURIComponent(album.artist)}/${encodeURIComponent(album.name)}`}
-                >
-                  <Button size="icon" variant="ghost" className="h-7 w-7">
-                    <ExternalLink className="h-3.5 w-3.5" />
-                  </Button>
-                </Link>
-              </TableCell>
             </TableRow>
           ))}
         </TableBody>
