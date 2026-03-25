@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { escapeLucene } from "@/lib/musicbrainz";
 
 const MB_BASE = "https://musicbrainz.org/ws/2";
 const USER_AGENT = "rig/1.0 (https://github.com/rig)";
@@ -14,7 +15,7 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  const query = `release:${album} AND artist:${artist}`;
+  const query = `release:${escapeLucene(album)} AND artist:${escapeLucene(artist)}`;
   const url = `${MB_BASE}/release?query=${encodeURIComponent(query)}&fmt=json&limit=1`;
 
   const res = await fetch(url, {

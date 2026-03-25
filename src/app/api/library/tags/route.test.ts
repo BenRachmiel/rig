@@ -1,0 +1,185 @@
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { nextRequest } from "@/test-helpers";
+
+vi.mock("@/lib/env", () => ({
+  MUSIC_DIR: "/music",
+  PREAMP_ADMIN_URL: "http://preamp:4534",
+}));
+
+vi.mock("next/headers", () => ({
+  headers: vi.fn().mockResolvedValue({
+    get: () => null,
+  }),
+}));
+
+const mockParseFile = vi.fn();
+vi.mock("music-metadata", () => ({
+  parseFile: (...args: unknown[]) => mockParseFile(...args),
+}));
+
+const mockRead = vi.fn();
+const mockWrite = vi.fn();
+vi.mock("node-id3", () => ({
+  default: {
+    read: (...args: unknown[]) => mockRead(...args),
+    write: (...args: unknown[]) => mockWrite(...args),
+  },
+}));
+
+vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response()));
+
+import { GET, PATCH } from "./route";
+
+function getReq(file: string) {
+  return nextRequest(
+    `http://localhost:3000/api/library/tags?file=${encodeURIComponent(file)}`,
+  );
+}
+
+function patchReq(body: object) {
+  return nextRequest("http://localhost:3000/api/library/tags", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+describe("GET /api/library/tags", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("returns tag data for a valid file", async () => {
+    mockParseFile.mockResolvedValue({
+      common: {
+        title: "Song",
+        artist: "Artist",
+        album: "Album",
+        albumartist: "Album Artist",
+        genre: ["Rock"],
+        year: 2020,
+        track: { no: 3, of: 12 },
+        disk: { no: 1 },
+        picture: [{ data: Buffer.from("img") }],
+      },
+      format: {
+        duration: 245.7,
+        bitrate: 320000,
+      },
+    });
+
+    const res = await GET(getReq("Artist/Album/track.mp3") as never);
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body).toEqual({
+      title: "Song",
+      artist: "Artist",
+      album: "Album",
+      albumArtist: "Album Artist",
+      genre: "Rock",
+      year: 2020,
+      track: 3,
+      trackTotal: 12,
+      disc: 1,
+      duration: 246,
+      bitrate: 320,
+      hasCover: true,
+    });
+  });
+
+  it("returns nulls for missing metadata", async () => {
+    mockParseFile.mockResolvedValue({
+      common: {},
+      format: {},
+    });
+
+    const res = await GET(getReq("track.mp3") as never);
+    const body = await res.json();
+
+    expect(body.title).toBeNull();
+    expect(body.artist).toBeNull();
+    expect(body.hasCover).toBe(false);
+    expect(body.duration).toBeNull();
+  });
+
+  it("returns 400 when file param is missing", async () => {
+    const res = await GET(nextRequest("http://localhost:3000/api/library/tags") as never);
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects path traversal", async () => {
+    const res = await GET(getReq("../../etc/passwd") as never);
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 500 on parse failure", async () => {
+    mockParseFile.mockRejectedValue(new Error("corrupt file"));
+
+    const res = await GET(getReq("bad.mp3") as never);
+    expect(res.status).toBe(500);
+    const body = await res.json();
+    expect(body.error).toBe("corrupt file");
+  });
+});
+
+describe("PATCH /api/library/tags", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("writes tags and returns ok", async () => {
+    mockRead.mockReturnValue({ title: "Old Title" });
+    mockWrite.mockReturnValue(true);
+
+    const res = await PATCH(
+      patchReq({ file: "track.mp3", tags: { title: "New Title", year: 2024 } }) as never,
+    );
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.ok).toBe(true);
+    expect(mockWrite).toHaveBeenCalledWith(
+      expect.objectContaining({ title: "New Title", year: "2024" }),
+      "/music/track.mp3",
+    );
+  });
+
+  it("returns 400 when file or tags is missing", async () => {
+    const res = await PATCH(patchReq({ file: "track.mp3" }) as never);
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects path traversal", async () => {
+    const res = await PATCH(
+      patchReq({ file: "../secret", tags: { title: "x" } }) as never,
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 500 when write fails", async () => {
+    mockRead.mockReturnValue({});
+    mockWrite.mockReturnValue(false);
+
+    const res = await PATCH(
+      patchReq({ file: "track.mp3", tags: { title: "x" } }) as never,
+    );
+    expect(res.status).toBe(500);
+  });
+
+  it("orders text fields before binary fields", async () => {
+    mockRead.mockReturnValue({
+      image: { data: Buffer.from("img") },
+      title: "Old",
+    });
+    mockWrite.mockReturnValue(true);
+
+    await PATCH(patchReq({ file: "track.mp3", tags: { title: "New" } }) as never);
+
+    const writtenTags = mockWrite.mock.calls[0][0];
+    const keys = Object.keys(writtenTags);
+    const titleIdx = keys.indexOf("title");
+    const imageIdx = keys.indexOf("image");
+    expect(titleIdx).toBeLessThan(imageIdx);
+  });
+});

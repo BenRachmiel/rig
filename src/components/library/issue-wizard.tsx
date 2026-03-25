@@ -22,6 +22,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import * as libraryApi from "@/lib/library-api";
 import { preampApi } from "@/lib/preamp-api";
+import { safePathSegment } from "@/lib/safe-path";
 import type { SongIssue, AlbumIssue } from "@/types/api";
 
 type IssueKey =
@@ -229,7 +230,7 @@ export function IssueWizard({
     if (!currentAlbum) return;
     setSaving(true);
     try {
-      const albumPath = `${currentAlbum.artist}/${currentAlbum.name}`;
+      const albumPath = `${safePathSegment(currentAlbum.artist)}/${safePathSegment(currentAlbum.name)}`;
       const { entries } = await libraryApi.browse(albumPath);
       const audioFiles = entries.filter((e) => e.type === "file");
 
@@ -253,7 +254,7 @@ export function IssueWizard({
 
   const saveAlbumArt = async () => {
     if (!currentAlbum) return;
-    const albumPath = `${currentAlbum.artist}/${currentAlbum.name}`;
+    const albumPath = `${safePathSegment(currentAlbum.artist)}/${safePathSegment(currentAlbum.name)}`;
 
     setSaving(true);
     try {
@@ -320,7 +321,7 @@ export function IssueWizard({
         const parts = song.path.split("/");
         const filename = parts.pop()!;
         const albumDir = parts.pop() || song.album;
-        const newPath = `${newArtist}/${albumDir}/${filename}`;
+        const newPath = `${safePathSegment(newArtist)}/${albumDir}/${filename}`;
         if (newPath !== song.path) {
           await libraryApi.moveEntry(song.path, newPath);
         }

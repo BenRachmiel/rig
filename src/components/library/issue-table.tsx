@@ -15,6 +15,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import * as libraryApi from "@/lib/library-api";
+import { safePathSegment } from "@/lib/safe-path";
 import type { SongIssue, AlbumIssue } from "@/types/api";
 
 type IssueType = string;
@@ -117,7 +118,7 @@ function SongIssueTable({
         const pathParts = song.path.split("/");
         const filename = pathParts.pop()!;
         const albumDir = pathParts.pop() || song.album;
-        const newPath = `${tags.artist}/${albumDir}/${filename}`;
+        const newPath = `${safePathSegment(tags.artist as string)}/${albumDir}/${filename}`;
         if (newPath !== song.path) {
           await libraryApi.moveEntry(song.path, newPath);
         }
