@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Save, ExternalLink, Loader2 } from "lucide-react";
+import { Save, ExternalLink, Loader2, Wand2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -29,16 +29,19 @@ interface Props {
   total: number;
   onLoadMore: () => void;
   onSaved: () => void;
+  onFixAll?: () => void;
 }
 
-export function IssueTable({ type, items, total, onLoadMore, onSaved }: Props) {
+export function IssueTable({ type, items, total, onLoadMore, onSaved, onFixAll }: Props) {
   if (isSongIssue(type)) {
     return (
       <SongIssueTable
+        type={type}
         items={items as SongIssue[]}
         total={total}
         onLoadMore={onLoadMore}
         onSaved={onSaved}
+        onFixAll={onFixAll}
       />
     );
   }
@@ -47,21 +50,27 @@ export function IssueTable({ type, items, total, onLoadMore, onSaved }: Props) {
       items={items as AlbumIssue[]}
       total={total}
       onLoadMore={onLoadMore}
+      onFixAll={onFixAll}
     />
   );
 }
 
 function SongIssueTable({
+  type,
   items,
   total,
   onLoadMore,
   onSaved,
+  onFixAll,
 }: {
+  type: IssueType;
   items: SongIssue[];
   total: number;
   onLoadMore: () => void;
   onSaved: () => void;
+  onFixAll?: () => void;
 }) {
+  const isArtistType = type === "songs_unknown_artist";
   const [edits, setEdits] = useState<Record<number, Record<string, string>>>(
     {},
   );
@@ -101,6 +110,16 @@ function SongIssueTable({
     setSaving((prev) => new Set(prev).add(idx));
     try {
       await libraryApi.writeTags(song.path, tags);
+
+      // For artist changes, also move the file
+      if (tags.artist && typeof tags.artist === "string" && tags.artist !== song.artist) {
+        const filename = song.path.split("/").pop()!;
+        const newPath = `${tags.artist}/${song.album}/${filename}`;
+        if (newPath !== song.path) {
+          await libraryApi.moveEntry(song.path, newPath);
+        }
+      }
+
       toast.success(`Saved tags for "${song.title}"`);
       setEdits((prev) => {
         const next = { ...prev };
@@ -139,12 +158,20 @@ function SongIssueTable({
         <p className="text-sm text-muted-foreground">
           Showing {items.length} of {total}
         </p>
-        {dirtyCount > 0 && (
-          <Button size="sm" onClick={saveAll}>
-            <Save className="h-3.5 w-3.5 mr-1.5" />
-            Save all ({dirtyCount})
-          </Button>
-        )}
+        <div className="flex items-center gap-2">
+          {dirtyCount > 0 && (
+            <Button size="sm" onClick={saveAll}>
+              <Save className="h-3.5 w-3.5 mr-1.5" />
+              Save all ({dirtyCount})
+            </Button>
+          )}
+          {onFixAll && (
+            <Button size="sm" variant="outline" onClick={onFixAll}>
+              <Wand2 className="h-3.5 w-3.5 mr-1.5" />
+              Fix all
+            </Button>
+          )}
+        </div>
       </div>
       <Table>
         <TableHeader>
@@ -161,7 +188,17 @@ function SongIssueTable({
           {items.map((song, idx) => (
             <TableRow key={song.path}>
               <TableCell className="font-medium">{song.title}</TableCell>
-              <TableCell>{song.artist}</TableCell>
+              <TableCell>
+                {isArtistType ? (
+                  <Input
+                    className="h-7 w-32"
+                    defaultValue={song.artist}
+                    onChange={(e) => setEdit(idx, "artist", e.target.value)}
+                  />
+                ) : (
+                  song.artist
+                )}
+              </TableCell>
               <TableCell>{song.album}</TableCell>
               <TableCell>
                 <Input
@@ -210,16 +247,26 @@ function AlbumIssueTable({
   items,
   total,
   onLoadMore,
+  onFixAll,
 }: {
   items: AlbumIssue[];
   total: number;
   onLoadMore: () => void;
+  onFixAll?: () => void;
 }) {
   return (
     <div className="flex flex-col gap-3">
-      <p className="text-sm text-muted-foreground">
-        Showing {items.length} of {total}
-      </p>
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-muted-foreground">
+          Showing {items.length} of {total}
+        </p>
+        {onFixAll && (
+          <Button size="sm" variant="outline" onClick={onFixAll}>
+            <Wand2 className="h-3.5 w-3.5 mr-1.5" />
+            Fix all
+          </Button>
+        )}
+      </div>
       <Table>
         <TableHeader>
           <TableRow>

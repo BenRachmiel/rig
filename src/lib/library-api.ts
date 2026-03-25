@@ -72,3 +72,15 @@ export async function musicbrainzLookup(
   const data = await res.json();
   return data.results;
 }
+
+export async function musicbrainzCover(
+  artist: string,
+  album: string
+): Promise<{ url: string } | null> {
+  const res = await fetch(
+    `${API}/musicbrainz-cover?artist=${encodeURIComponent(artist)}&album=${encodeURIComponent(album)}`
+  );
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
+  return res.json();
+}

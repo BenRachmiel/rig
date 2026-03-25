@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/collapsible";
 import { StatCard } from "@/components/library/stat-card";
 import { IssueTable } from "@/components/library/issue-table";
+import { IssueWizard } from "@/components/library/issue-wizard";
 import { preampApi } from "@/lib/preamp-api";
 import * as libraryApi from "@/lib/library-api";
 import type {
@@ -74,6 +75,7 @@ export default function LibraryPage() {
   const [artists, setArtists] = useState<LibraryEntry[]>([]);
   const [coverUrls, setCoverUrls] = useState<string[]>([]);
   const [bgEnabled, toggleBg] = useLocalStorageToggle(BG_STORAGE_KEY, true);
+  const [wizardIssue, setWizardIssue] = useState<IssueKey | null>(null);
 
   const fetchStats = useCallback(async () => {
     const [s, sc, browse] = await Promise.all([
@@ -358,6 +360,7 @@ export default function LibraryPage() {
                           total={issueData.total}
                           onLoadMore={handleLoadMore}
                           onSaved={handleSaved}
+                          onFixAll={() => setWizardIssue(activeIssue)}
                         />
                       </div>
                     )}
@@ -378,6 +381,18 @@ export default function LibraryPage() {
           </>
         )}
       </div>
+
+      {wizardIssue && (
+        <IssueWizard
+          issueType={wizardIssue}
+          open={!!wizardIssue}
+          onOpenChange={(open) => {
+            if (!open) setWizardIssue(null);
+          }}
+          onComplete={handleSaved}
+          existingArtists={artists.map((a) => a.name)}
+        />
+      )}
     </>
   );
 }
