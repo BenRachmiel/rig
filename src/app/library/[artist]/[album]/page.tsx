@@ -3,10 +3,18 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { use } from "react";
 import Link from "next/link";
-import { ChevronLeft, Save, Image, Upload } from "lucide-react";
+import { ChevronLeft, Save, Image, Upload, Search } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import {
   Table,
   TableBody,
@@ -16,7 +24,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import * as libraryApi from "@/lib/library-api";
-import type { LibraryEntry, TagData } from "@/types/api";
+import type { LibraryEntry, TagData, MusicBrainzResult } from "@/types/api";
 
 interface TrackWithTags {
   entry: LibraryEntry;
@@ -43,6 +51,15 @@ export default function AlbumPage({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [coverKey, setCoverKey] = useState(0);
 
+  // Album-level bulk edit state
+  const [albumGenre, setAlbumGenre] = useState("");
+  const [albumYear, setAlbumYear] = useState("");
+
+  // MusicBrainz lookup state
+  const [mbResults, setMbResults] = useState<MusicBrainzResult[]>([]);
+  const [mbLoading, setMbLoading] = useState(false);
+  const [mbOpen, setMbOpen] = useState(false);
+
   const loadTracks = useCallback(async () => {
     setLoading(true);
     try {
@@ -61,6 +78,13 @@ export default function AlbumPage({
       );
 
       setTracks(loaded);
+
+      // Initialize album-level fields from first track
+      const firstTags = loaded.find((t) => t.tags)?.tags;
+      if (firstTags) {
+        setAlbumGenre(firstTags.genre ?? "");
+        setAlbumYear(firstTags.year != null ? String(firstTags.year) : "");
+      }
     } finally {
       setLoading(false);
     }
@@ -73,13 +97,15 @@ export default function AlbumPage({
   // Try filesystem cover first, fall back to embedded
   useEffect(() => {
     const dirUrl = libraryApi.coverDirUrl(basePath);
-    fetch(dirUrl, { method: "HEAD" }).then((r) => {
-      if (r.ok) {
-        setCoverSrc(dirUrl);
-      } else if (tracks.length > 0 && tracks[0].tags?.hasCover) {
-        setCoverSrc(libraryApi.coverUrl(tracks[0].entry.path));
-      }
-    }).catch(() => {});
+    fetch(dirUrl, { method: "HEAD" })
+      .then((r) => {
+        if (r.ok) {
+          setCoverSrc(dirUrl);
+        } else if (tracks.length > 0 && tracks[0].tags?.hasCover) {
+          setCoverSrc(libraryApi.coverUrl(tracks[0].entry.path));
+        }
+      })
+      .catch(() => {});
   }, [basePath, tracks, coverKey]);
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -110,6 +136,41 @@ export default function AlbumPage({
           : t
       )
     );
+  };
+
+  const applyToAllTracks = () => {
+    setTracks((prev) =>
+      prev.map((t) => ({
+        ...t,
+        edits: {
+          ...t.edits,
+          genre: albumGenre,
+          year: albumYear ? Number(albumYear) : null,
+        },
+        dirty: true,
+      }))
+    );
+    toast.success("Applied genre & year to all tracks");
+  };
+
+  const handleMbLookup = async () => {
+    setMbLoading(true);
+    setMbResults([]);
+    try {
+      const results = await libraryApi.musicbrainzLookup(artistName, albumName);
+      setMbResults(results);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Lookup failed");
+    } finally {
+      setMbLoading(false);
+    }
+  };
+
+  const applyMbResult = (result: MusicBrainzResult) => {
+    if (result.genre) setAlbumGenre(result.genre);
+    if (result.year) setAlbumYear(result.year);
+    setMbOpen(false);
+    toast.success("Applied MusicBrainz metadata");
   };
 
   const saveTrack = async (idx: number) => {
@@ -218,6 +279,91 @@ export default function AlbumPage({
             {uploading ? "Uploading..." : "Upload cover"}
           </Button>
         </div>
+      </div>
+
+      {/* Album-level genre & year bulk edit */}
+      <div className="flex flex-wrap items-end gap-3 rounded-lg border bg-card p-4">
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="album-genre">Genre</Label>
+          <Input
+            id="album-genre"
+            value={albumGenre}
+            onChange={(e) => setAlbumGenre(e.target.value)}
+            placeholder="Genre"
+            className="h-8 w-40"
+          />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="album-year">Year</Label>
+          <Input
+            id="album-year"
+            value={albumYear}
+            onChange={(e) => setAlbumYear(e.target.value)}
+            placeholder="Year"
+            className="h-8 w-20"
+          />
+        </div>
+        <Button variant="outline" size="sm" onClick={applyToAllTracks}>
+          Apply to all tracks
+        </Button>
+
+        <Dialog open={mbOpen} onOpenChange={setMbOpen}>
+          <DialogTrigger
+            render={
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setMbOpen(true);
+                  handleMbLookup();
+                }}
+              />
+            }
+          >
+            <Search className="h-3.5 w-3.5 mr-1.5" />
+            Lookup
+          </DialogTrigger>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>MusicBrainz Lookup</DialogTitle>
+            </DialogHeader>
+            {mbLoading ? (
+              <p className="text-sm text-muted-foreground py-4 text-center">
+                Searching...
+              </p>
+            ) : mbResults.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-4 text-center">
+                No results found
+              </p>
+            ) : (
+              <div className="flex flex-col gap-2 max-h-64 overflow-y-auto">
+                {mbResults.map((r) => (
+                  <div
+                    key={r.id}
+                    className="flex items-center justify-between rounded-lg border p-3 text-sm"
+                  >
+                    <div className="flex flex-col gap-0.5 min-w-0 flex-1">
+                      <span className="font-medium truncate">{r.title}</span>
+                      <span className="text-muted-foreground text-xs truncate">
+                        {r.artist}
+                        {r.year && ` · ${r.year}`}
+                        {r.genre && ` · ${r.genre}`}
+                      </span>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="ml-2 shrink-0"
+                      onClick={() => applyMbResult(r)}
+                    >
+                      Apply
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
       </div>
 
       {loading ? (

@@ -1,4 +1,4 @@
-import type { LibraryEntry, TagData, ScanStatus } from "@/types/api";
+import type { LibraryEntry, TagData, ScanStatus, MusicBrainzResult } from "@/types/api";
 
 const API = "/api/library";
 
@@ -59,4 +59,16 @@ export async function scanStatus(): Promise<ScanStatus> {
 
 export async function startScan(): Promise<ScanStatus> {
   return json("/scan", { method: "POST" });
+}
+
+export async function musicbrainzLookup(
+  artist: string,
+  album: string
+): Promise<MusicBrainzResult[]> {
+  const res = await fetch(
+    `/api/library/musicbrainz?artist=${encodeURIComponent(artist)}&album=${encodeURIComponent(album)}`
+  );
+  if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
+  const data = await res.json();
+  return data.results;
 }

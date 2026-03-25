@@ -130,6 +130,14 @@ export interface LibraryEntry {
   path: string;
 }
 
+export interface MusicBrainzResult {
+  id: string;
+  title: string;
+  artist: string;
+  year: string;
+  genre: string;
+}
+
 export interface TagData {
   title: string | null;
   artist: string | null;

@@ -1,14 +1,26 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import Link from "next/link";
-import { RefreshCw } from "lucide-react";
+import { RefreshCw, ChevronsUpDown, Wallpaper } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Toggle } from "@/components/ui/toggle";
+import {
+  Collapsible,
+  CollapsibleTrigger,
+  CollapsibleContent,
+} from "@/components/ui/collapsible";
 import { StatCard } from "@/components/library/stat-card";
 import { IssueTable } from "@/components/library/issue-table";
 import { preampApi } from "@/lib/preamp-api";
 import * as libraryApi from "@/lib/library-api";
-import type { Stats, ScanStatus, IssuesResponse, LibraryEntry } from "@/types/api";
+import type {
+  Stats,
+  ScanStatus,
+  IssuesResponse,
+  LibraryEntry,
+} from "@/types/api";
 
 type IssueKey =
   | "albums_missing_art"
@@ -29,6 +41,29 @@ const ISSUE_LABELS: Record<IssueKey, string> = {
   songs_zero_duration: "Songs with zero duration",
 };
 
+const BG_STORAGE_KEY = "library-bg-enabled";
+
+function useLocalStorageToggle(key: string, defaultValue: boolean) {
+  const [value, setValue] = useState(defaultValue);
+  const initialized = useRef(false);
+
+  useEffect(() => {
+    const stored = localStorage.getItem(key);
+    if (stored !== null) setValue(stored === "true");
+    initialized.current = true;
+  }, [key]);
+
+  const toggle = useCallback(() => {
+    setValue((prev) => {
+      const next = !prev;
+      localStorage.setItem(key, String(next));
+      return next;
+    });
+  }, [key]);
+
+  return [value, toggle, initialized.current] as const;
+}
+
 export default function LibraryPage() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [scan, setScan] = useState<ScanStatus>({ scanning: false, count: 0 });
@@ -37,6 +72,8 @@ export default function LibraryPage() {
   const [issueOffset, setIssueOffset] = useState(0);
   const [loadingIssue, setLoadingIssue] = useState(false);
   const [artists, setArtists] = useState<LibraryEntry[]>([]);
+  const [coverUrls, setCoverUrls] = useState<string[]>([]);
+  const [bgEnabled, toggleBg] = useLocalStorageToggle(BG_STORAGE_KEY, true);
 
   const fetchStats = useCallback(async () => {
     const [s, sc, browse] = await Promise.all([
@@ -61,6 +98,7 @@ export default function LibraryPage() {
       setScan(s);
       if (!s.scanning) {
         clearInterval(id);
+        toast.success(`Scan complete — ${s.count} tracks indexed`);
         preampApi.stats().then(setStats);
         if (activeIssue) {
           fetchIssues(activeIssue, 0);
@@ -69,6 +107,41 @@ export default function LibraryPage() {
     }, 2000);
     return () => clearInterval(id);
   }, [scan.scanning, activeIssue]);
+
+  // Load album art background wall after artists are available
+  useEffect(() => {
+    if (artists.length === 0) return;
+    let cancelled = false;
+
+    async function loadCovers() {
+      const shuffled = [...artists]
+        .sort(() => Math.random() - 0.5)
+        .slice(0, 8);
+      const urls: string[] = [];
+
+      for (const artist of shuffled) {
+        if (cancelled) return;
+        try {
+          const { entries } = await libraryApi.browse(artist.name);
+          const albums = entries.filter((e) => e.type === "directory");
+          for (const album of albums.slice(0, 3)) {
+            urls.push(libraryApi.coverDirUrl(album.path));
+            if (urls.length >= 20) break;
+          }
+        } catch {
+          // skip artist on error
+        }
+        if (urls.length >= 20) break;
+      }
+
+      if (!cancelled) setCoverUrls(urls);
+    }
+
+    loadCovers();
+    return () => {
+      cancelled = true;
+    };
+  }, [artists]);
 
   const fetchIssues = async (type: IssueKey, offset: number) => {
     setLoadingIssue(true);
@@ -126,112 +199,185 @@ export default function LibraryPage() {
         .filter((i) => i.count > 0)
     : [];
 
+  const totalIssues = issues.reduce((sum, i) => sum + i.count, 0);
+
+  // Build wall: duplicate URLs to fill columns, then duplicate the row block for seamless looping
+  const COLS = 8;
+  const ROWS = 5;
+  const cellCount = COLS * ROWS;
+  const wallUrls =
+    coverUrls.length > 0
+      ? Array.from(
+          { length: cellCount },
+          (_, i) => coverUrls[i % coverUrls.length]
+        )
+      : [];
+
   return (
-    <div className="max-w-4xl mx-auto px-4 py-4 md:px-6 md:py-6 flex flex-col gap-6">
-      <div>
-        <h1 className="text-xl font-semibold tracking-tight">
-          Library Maintenance
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          Data quality issues and scanning
-        </p>
-      </div>
-
-      {stats && (
-        <>
-          <div className="grid grid-cols-3 gap-4">
-            <StatCard label="Artists" value={stats.artists} />
-            <StatCard label="Albums" value={stats.albums} />
-            <StatCard label="Songs" value={stats.songs} />
+    <>
+      {/* Animated album art background wall */}
+      {bgEnabled && wallUrls.length > 0 && (
+        <div className="fixed inset-0 -z-10 overflow-hidden pointer-events-none opacity-[0.12]">
+          <div
+            className="animate-wall-pan"
+            style={{
+              display: "grid",
+              gridTemplateColumns: `repeat(${COLS}, 1fr)`,
+              width: "100%",
+            }}
+          >
+            {/* Render two copies of the grid for seamless looping */}
+            {[...wallUrls, ...wallUrls].map((url, i) => (
+              <img
+                key={i}
+                src={url}
+                alt=""
+                loading="lazy"
+                className="w-full aspect-square object-cover"
+                onError={(e) => {
+                  (e.target as HTMLImageElement).style.visibility = "hidden";
+                }}
+              />
+            ))}
           </div>
-
-          {artists.length > 0 && (
-            <div className="flex flex-col gap-2">
-              <h3 className="text-sm font-medium text-muted-foreground">
-                Artists
-              </h3>
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
-                {artists.map((a) => (
-                  <Link
-                    key={a.name}
-                    href={`/library/${encodeURIComponent(a.name)}`}
-                    className="rounded-lg border bg-card px-3 py-2 text-sm hover:bg-accent transition-colors truncate"
-                  >
-                    {a.name}
-                  </Link>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {issues.length > 0 && (
-            <div className="flex flex-col gap-2">
-              <h3 className="text-sm font-medium text-muted-foreground">
-                Data Quality
-              </h3>
-              <div className="grid grid-cols-2 gap-3">
-                {issues.map((i) => (
-                  <StatCard
-                    key={i.key}
-                    label={i.label}
-                    value={i.count}
-                    variant="warning"
-                    active={activeIssue === i.key}
-                    onClick={() => handleIssueClick(i.key)}
-                  />
-                ))}
-              </div>
-            </div>
-          )}
-        </>
-      )}
-
-      {/* Active issue table */}
-      {activeIssue && issueData && !loadingIssue && (
-        <div className="rounded-lg border p-4 bg-card">
-          <h3 className="font-medium mb-3">
-            {ISSUE_LABELS[activeIssue]}
-          </h3>
-          <IssueTable
-            type={activeIssue}
-            items={issueData.items}
-            total={issueData.total}
-            onLoadMore={handleLoadMore}
-            onSaved={handleSaved}
-          />
         </div>
       )}
 
-      {activeIssue && loadingIssue && !issueData && (
-        <div className="flex justify-center py-8">
-          <RefreshCw className="h-5 w-5 animate-spin text-muted-foreground" />
-        </div>
-      )}
-
-      {/* Scan control */}
-      <div className="flex flex-col gap-4 rounded-lg border p-6 bg-card">
+      <div className="max-w-4xl mx-auto px-4 py-4 md:px-6 md:py-6 flex flex-col gap-6">
+        {/* Header with rescan button and background toggle */}
         <div className="flex items-center justify-between">
           <div>
-            <h3 className="font-medium">Library Scan</h3>
+            <h1 className="text-xl font-semibold tracking-tight">
+              Library Maintenance
+            </h1>
             <p className="text-sm text-muted-foreground">
               {scan.scanning
                 ? `Scanning... ${scan.count} tracks found`
-                : `${scan.count} tracks indexed`}
+                : "Data quality issues and scanning"}
             </p>
           </div>
-          <Button onClick={handleScan} disabled={scan.scanning}>
-            <RefreshCw
-              className={`h-4 w-4 mr-1.5 ${scan.scanning ? "animate-spin" : ""}`}
-            />
-            {scan.scanning ? "Scanning..." : "Rescan"}
-          </Button>
+          <div className="flex items-center gap-2">
+            {coverUrls.length > 0 && (
+              <Toggle
+                pressed={bgEnabled}
+                onPressedChange={toggleBg}
+                variant="outline"
+                size="sm"
+                aria-label="Toggle background art"
+              >
+                <Wallpaper className="h-4 w-4" />
+              </Toggle>
+            )}
+            <Button onClick={handleScan} disabled={scan.scanning}>
+              <RefreshCw
+                className={`h-4 w-4 mr-1.5 ${scan.scanning ? "animate-spin" : ""}`}
+              />
+              {scan.scanning ? "Scanning..." : "Rescan"}
+            </Button>
+          </div>
         </div>
+
+        {/* Scanning progress bar */}
         {scan.scanning && (
-          <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+          <div className="h-1.5 rounded-full bg-muted overflow-hidden -mt-4">
             <div className="h-full bg-primary rounded-full animate-pulse w-2/3" />
           </div>
         )}
+
+        {stats && (
+          <>
+            <div className="grid grid-cols-3 gap-4">
+              <StatCard label="Artists" value={stats.artists} />
+              <StatCard label="Albums" value={stats.albums} />
+              <StatCard label="Songs" value={stats.songs} />
+            </div>
+
+            {/* Collapsible Artists */}
+            {artists.length > 0 && (
+              <Collapsible defaultOpen={false}>
+                <CollapsibleTrigger className="flex w-full items-center justify-between group">
+                  <h3 className="text-sm font-medium text-muted-foreground">
+                    Artists ({artists.length})
+                  </h3>
+                  <Button variant="ghost" size="icon" className="h-7 w-7">
+                    <ChevronsUpDown className="h-4 w-4 text-muted-foreground" />
+                  </Button>
+                </CollapsibleTrigger>
+                <CollapsibleContent>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 pt-2">
+                    {artists.map((a) => (
+                      <Link
+                        key={a.name}
+                        href={`/library/${encodeURIComponent(a.name)}`}
+                        className="rounded-lg border bg-card px-3 py-2 text-sm hover:bg-accent transition-colors truncate"
+                      >
+                        {a.name}
+                      </Link>
+                    ))}
+                  </div>
+                </CollapsibleContent>
+              </Collapsible>
+            )}
+
+            {/* Collapsible Data Quality */}
+            <Collapsible defaultOpen={false}>
+              <CollapsibleTrigger className="flex w-full items-center justify-between group">
+                <h3 className="text-sm font-medium text-muted-foreground">
+                  Data Quality ({totalIssues} issue
+                  {totalIssues !== 1 ? "s" : ""})
+                </h3>
+                <Button variant="ghost" size="icon" className="h-7 w-7">
+                  <ChevronsUpDown className="h-4 w-4 text-muted-foreground" />
+                </Button>
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                {issues.length > 0 ? (
+                  <div className="flex flex-col gap-3 pt-2">
+                    <div className="grid grid-cols-2 gap-3">
+                      {issues.map((i) => (
+                        <StatCard
+                          key={i.key}
+                          label={i.label}
+                          value={i.count}
+                          variant="warning"
+                          active={activeIssue === i.key}
+                          onClick={() => handleIssueClick(i.key)}
+                        />
+                      ))}
+                    </div>
+
+                    {/* Active issue table */}
+                    {activeIssue && issueData && !loadingIssue && (
+                      <div className="rounded-lg border p-4 bg-card">
+                        <h3 className="font-medium mb-3">
+                          {ISSUE_LABELS[activeIssue]}
+                        </h3>
+                        <IssueTable
+                          type={activeIssue}
+                          items={issueData.items}
+                          total={issueData.total}
+                          onLoadMore={handleLoadMore}
+                          onSaved={handleSaved}
+                        />
+                      </div>
+                    )}
+
+                    {activeIssue && loadingIssue && !issueData && (
+                      <div className="flex justify-center py-8">
+                        <RefreshCw className="h-5 w-5 animate-spin text-muted-foreground" />
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground pt-2">
+                    No data quality issues found
+                  </p>
+                )}
+              </CollapsibleContent>
+            </Collapsible>
+          </>
+        )}
       </div>
-    </div>
+    </>
   );
 }
