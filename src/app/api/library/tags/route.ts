@@ -54,7 +54,7 @@ export async function PATCH(request: NextRequest) {
   try {
     const NodeID3 = await import("node-id3");
 
-    // Read existing tags first
+    // Read existing tags so we can merge and control frame order.
     const existing = NodeID3.default.read(resolved);
 
     const update: Record<string, unknown> = {};
@@ -66,13 +66,30 @@ export async function PATCH(request: NextRequest) {
     if (tags.year !== undefined) update.year = String(tags.year);
     if (tags.track !== undefined) update.trackNumber = String(tags.track);
 
-    // Preamp's ID3 reader caps at 4KB — if APIC (cover art) is serialised
-    // before text frames it pushes them past the read window. Construct the
-    // tag object with text frames first, then append image/raw data last.
+    // Preamp's ID3 reader only reads 4KB of tag data. Large binary frames
+    // (SYLT, APIC, etc.) serialised before text frames push them past the
+    // read window. Write only the text fields we care about — skip binary
+    // frames entirely. Embedded art and lyrics stay in the file via the
+    // raw tag body that node-id3 doesn't touch outside the ID3 header.
+    //
+    // Actually, node-id3.write() strips the entire old tag and replaces it,
+    // so we must preserve non-text data. Put text fields first, then the rest.
+    const textKeys = new Set([
+      "title", "artist", "album", "performerInfo", "genre", "year",
+      "trackNumber", "partOfSet", "composer", "publisher",
+    ]);
     const merged = { ...existing, ...update };
-    const { image, raw, ...textTags } = merged;
-    const ordered = { ...textTags, ...(image != null ? { image } : {}), ...(raw != null ? { raw } : {}) };
-    const result = NodeID3.default.update(ordered, resolved);
+    const ordered: Record<string, unknown> = {};
+    // Text fields first — these must be within the 4KB read window
+    for (const k of textKeys) {
+      if (k in merged) ordered[k] = (merged as Record<string, unknown>)[k];
+    }
+    // Everything else (image, synchronisedLyrics, etc.) after
+    for (const [k, v] of Object.entries(merged as Record<string, unknown>)) {
+      if (!textKeys.has(k) && k !== "raw") ordered[k] = v;
+    }
+
+    const result = NodeID3.default.write(ordered, resolved);
 
     if (result !== true) {
       return Response.json({ error: "Failed to write tags" }, { status: 500 });

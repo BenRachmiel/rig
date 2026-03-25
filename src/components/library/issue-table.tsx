@@ -113,8 +113,11 @@ function SongIssueTable({
 
       // For artist changes, also move the file
       if (tags.artist && typeof tags.artist === "string" && tags.artist !== song.artist) {
-        const filename = song.path.split("/").pop()!;
-        const newPath = `${tags.artist}/${song.album}/${filename}`;
+        // Extract album dir from the actual path, not song.album metadata
+        const pathParts = song.path.split("/");
+        const filename = pathParts.pop()!;
+        const albumDir = pathParts.pop() || song.album;
+        const newPath = `${tags.artist}/${albumDir}/${filename}`;
         if (newPath !== song.path) {
           await libraryApi.moveEntry(song.path, newPath);
         }
