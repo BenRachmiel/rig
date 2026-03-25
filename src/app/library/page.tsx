@@ -181,7 +181,18 @@ export default function LibraryPage() {
     fetchIssues(activeIssue, issueOffset + 50);
   };
 
-  const handleSaved = () => {
+  const handleSaved = async () => {
+    // Backend writes trigger an async rescan — wait for it to finish before refreshing
+    const waitForRescan = async () => {
+      // Give the scan a moment to start
+      await new Promise((r) => setTimeout(r, 500));
+      for (let i = 0; i < 20; i++) {
+        const s = await libraryApi.scanStatus();
+        if (!s.scanning) return;
+        await new Promise((r) => setTimeout(r, 500));
+      }
+    };
+    await waitForRescan();
     if (activeIssue) {
       fetchIssues(activeIssue, 0);
     }

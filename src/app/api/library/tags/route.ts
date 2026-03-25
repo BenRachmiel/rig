@@ -66,8 +66,13 @@ export async function PATCH(request: NextRequest) {
     if (tags.year !== undefined) update.year = String(tags.year);
     if (tags.track !== undefined) update.trackNumber = String(tags.track);
 
+    // Preamp's ID3 reader caps at 4KB — if APIC (cover art) is serialised
+    // before text frames it pushes them past the read window. Construct the
+    // tag object with text frames first, then append image/raw data last.
     const merged = { ...existing, ...update };
-    const result = NodeID3.default.update(merged, resolved);
+    const { image, raw, ...textTags } = merged;
+    const ordered = { ...textTags, ...(image != null ? { image } : {}), ...(raw != null ? { raw } : {}) };
+    const result = NodeID3.default.update(ordered, resolved);
 
     if (result !== true) {
       return Response.json({ error: "Failed to write tags" }, { status: 500 });
