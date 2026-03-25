@@ -204,46 +204,45 @@ export default function LibraryPage() {
 
   const totalIssues = issues.reduce((sum, i) => sum + i.count, 0);
 
-  // Stable seeded aspect ratios for masonry tiles
-  const ASPECT_RATIOS = [
-    "aspect-square",
-    "aspect-[3/4]",
-    "aspect-[4/3]",
-    "aspect-square",
-    "aspect-[2/3]",
-    "aspect-[4/3]",
-    "aspect-square",
-    "aspect-[3/4]",
-  ];
-
-  // Duplicate covers for seamless vertical pan (two copies)
-  const wallUrls = coverUrls.length > 0
-    ? [...coverUrls, ...coverUrls]
-    : [];
+  // Build wall: duplicate URLs to fill columns, then duplicate the row block for seamless looping
+  const COLS = 8;
+  const ROWS = 5;
+  const cellCount = COLS * ROWS;
+  const wallUrls =
+    coverUrls.length > 0
+      ? Array.from(
+          { length: cellCount },
+          (_, i) => coverUrls[i % coverUrls.length],
+        )
+      : [];
 
   return (
     <>
-      {/* Masonry album art background wall */}
+      {/* Animated album art background wall */}
       {bgEnabled && wallUrls.length > 0 && (
         <div className="fixed inset-0 -z-10 overflow-hidden pointer-events-none opacity-[0.12]">
           <div
             className="animate-wall-pan"
-            style={{ columns: "8 1fr", gap: "4px" }}
+            style={{
+              display: "grid",
+              gridTemplateColumns: `repeat(${COLS}, 1fr)`,
+              width: "100%",
+            }}
           >
-            {wallUrls.map((url, i) => (
+            {/* Render two copies of the grid for seamless looping */}
+            {[...wallUrls, ...wallUrls].map((url, i) => (
               <img
-                key={`${i}-${url}`}
+                key={i}
                 src={url}
                 alt=""
                 loading="lazy"
-                className={`w-full object-cover rounded-sm mb-1 opacity-0 transition-opacity duration-700 ${ASPECT_RATIOS[i % ASPECT_RATIOS.length]}`}
-                style={{ breakInside: "avoid" }}
+                className="w-full aspect-square object-cover opacity-0 transition-opacity duration-700"
                 onLoad={(e) => {
                   (e.target as HTMLImageElement).classList.remove("opacity-0");
                   (e.target as HTMLImageElement).classList.add("opacity-100");
                 }}
                 onError={(e) => {
-                  (e.target as HTMLImageElement).style.display = "none";
+                  (e.target as HTMLImageElement).style.visibility = "hidden";
                 }}
               />
             ))}
