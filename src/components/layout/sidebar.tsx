@@ -42,7 +42,7 @@ export function Sidebar() {
   }
 
   return (
-    <aside className="w-14 border-r border-border flex flex-col items-center py-4 gap-2 shrink-0">
+    <aside className="w-14 border-r border-border bg-background flex flex-col items-center py-4 gap-2 shrink-0">
       <Link
         href="/"
         className="text-sm font-bold tracking-tight mb-4 text-foreground"

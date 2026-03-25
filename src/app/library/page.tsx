@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import Link from "next/link";
-import { RefreshCw, ChevronsUpDown, Wallpaper } from "lucide-react";
+import { RefreshCw, ChevronRight, Wallpaper } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Toggle } from "@/components/ui/toggle";
@@ -76,6 +76,8 @@ export default function LibraryPage() {
   const [coverUrls, setCoverUrls] = useState<string[]>([]);
   const [bgEnabled, toggleBg] = useLocalStorageToggle(BG_STORAGE_KEY, true);
   const [wizardIssue, setWizardIssue] = useState<IssueKey | null>(null);
+  const [artistsOpen, setArtistsOpen] = useState(false);
+  const [qualityOpen, setQualityOpen] = useState(false);
 
   const fetchStats = useCallback(async () => {
     const [s, sc, browse] = await Promise.all([
@@ -110,7 +112,7 @@ export default function LibraryPage() {
     return () => clearInterval(id);
   }, [scan.scanning, activeIssue]);
 
-  // Load album art background wall after artists are available
+  // Stream album art background wall — push URLs one at a time for smooth fade-in
   useEffect(() => {
     if (artists.length === 0) return;
     let cancelled = false;
@@ -118,25 +120,24 @@ export default function LibraryPage() {
     async function loadCovers() {
       const shuffled = [...artists]
         .sort(() => Math.random() - 0.5)
-        .slice(0, 8);
-      const urls: string[] = [];
+        .slice(0, 10);
+      let count = 0;
 
       for (const artist of shuffled) {
-        if (cancelled) return;
+        if (cancelled || count >= 24) return;
         try {
           const { entries } = await libraryApi.browse(artist.name);
           const albums = entries.filter((e) => e.type === "directory");
           for (const album of albums.slice(0, 3)) {
-            urls.push(libraryApi.coverDirUrl(album.path));
-            if (urls.length >= 20) break;
+            if (cancelled || count >= 24) return;
+            const url = libraryApi.coverDirUrl(album.path);
+            setCoverUrls((prev) => [...prev, url]);
+            count++;
           }
         } catch {
           // skip artist on error
         }
-        if (urls.length >= 20) break;
       }
-
-      if (!cancelled) setCoverUrls(urls);
     }
 
     loadCovers();
@@ -203,41 +204,46 @@ export default function LibraryPage() {
 
   const totalIssues = issues.reduce((sum, i) => sum + i.count, 0);
 
-  // Build wall: duplicate URLs to fill columns, then duplicate the row block for seamless looping
-  const COLS = 8;
-  const ROWS = 5;
-  const cellCount = COLS * ROWS;
-  const wallUrls =
-    coverUrls.length > 0
-      ? Array.from(
-          { length: cellCount },
-          (_, i) => coverUrls[i % coverUrls.length]
-        )
-      : [];
+  // Stable seeded aspect ratios for masonry tiles
+  const ASPECT_RATIOS = [
+    "aspect-square",
+    "aspect-[3/4]",
+    "aspect-[4/3]",
+    "aspect-square",
+    "aspect-[2/3]",
+    "aspect-[4/3]",
+    "aspect-square",
+    "aspect-[3/4]",
+  ];
+
+  // Duplicate covers for seamless vertical pan (two copies)
+  const wallUrls = coverUrls.length > 0
+    ? [...coverUrls, ...coverUrls]
+    : [];
 
   return (
     <>
-      {/* Animated album art background wall */}
+      {/* Masonry album art background wall */}
       {bgEnabled && wallUrls.length > 0 && (
         <div className="fixed inset-0 -z-10 overflow-hidden pointer-events-none opacity-[0.12]">
           <div
             className="animate-wall-pan"
-            style={{
-              display: "grid",
-              gridTemplateColumns: `repeat(${COLS}, 1fr)`,
-              width: "100%",
-            }}
+            style={{ columns: "8 1fr", gap: "4px" }}
           >
-            {/* Render two copies of the grid for seamless looping */}
-            {[...wallUrls, ...wallUrls].map((url, i) => (
+            {wallUrls.map((url, i) => (
               <img
-                key={i}
+                key={`${i}-${url}`}
                 src={url}
                 alt=""
                 loading="lazy"
-                className="w-full aspect-square object-cover"
+                className={`w-full object-cover rounded-sm mb-1 opacity-0 transition-opacity duration-700 ${ASPECT_RATIOS[i % ASPECT_RATIOS.length]}`}
+                style={{ breakInside: "avoid" }}
+                onLoad={(e) => {
+                  (e.target as HTMLImageElement).classList.remove("opacity-0");
+                  (e.target as HTMLImageElement).classList.add("opacity-100");
+                }}
                 onError={(e) => {
-                  (e.target as HTMLImageElement).style.visibility = "hidden";
+                  (e.target as HTMLImageElement).style.display = "none";
                 }}
               />
             ))}
@@ -296,14 +302,14 @@ export default function LibraryPage() {
 
             {/* Collapsible Artists */}
             {artists.length > 0 && (
-              <Collapsible defaultOpen={false}>
-                <CollapsibleTrigger className="flex w-full items-center justify-between group">
+              <Collapsible open={artistsOpen} onOpenChange={setArtistsOpen}>
+                <CollapsibleTrigger className="flex w-full items-center gap-1.5 group cursor-pointer">
+                  <ChevronRight
+                    className={`h-4 w-4 text-muted-foreground transition-transform duration-150 ${artistsOpen ? "rotate-90" : ""}`}
+                  />
                   <h3 className="text-sm font-medium text-muted-foreground">
                     Artists ({artists.length})
                   </h3>
-                  <Button variant="ghost" size="icon" className="h-7 w-7">
-                    <ChevronsUpDown className="h-4 w-4 text-muted-foreground" />
-                  </Button>
                 </CollapsibleTrigger>
                 <CollapsibleContent>
                   <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 pt-2">
@@ -322,29 +328,36 @@ export default function LibraryPage() {
             )}
 
             {/* Collapsible Data Quality */}
-            <Collapsible defaultOpen={false}>
-              <CollapsibleTrigger className="flex w-full items-center justify-between group">
+            <Collapsible open={qualityOpen} onOpenChange={setQualityOpen}>
+              <CollapsibleTrigger className="flex w-full items-center gap-1.5 group cursor-pointer">
+                <ChevronRight
+                  className={`h-4 w-4 text-muted-foreground transition-transform duration-150 ${qualityOpen ? "rotate-90" : ""}`}
+                />
                 <h3 className="text-sm font-medium text-muted-foreground">
                   Data Quality ({totalIssues} issue
                   {totalIssues !== 1 ? "s" : ""})
                 </h3>
-                <Button variant="ghost" size="icon" className="h-7 w-7">
-                  <ChevronsUpDown className="h-4 w-4 text-muted-foreground" />
-                </Button>
               </CollapsibleTrigger>
               <CollapsibleContent>
                 {issues.length > 0 ? (
                   <div className="flex flex-col gap-3 pt-2">
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="flex flex-col gap-1">
                       {issues.map((i) => (
-                        <StatCard
+                        <button
                           key={i.key}
-                          label={i.label}
-                          value={i.count}
-                          variant="warning"
-                          active={activeIssue === i.key}
+                          type="button"
+                          className={`flex items-center justify-between rounded-lg px-3 py-2 text-sm transition-colors text-left ${
+                            activeIssue === i.key
+                              ? "bg-primary/10 text-primary"
+                              : "hover:bg-muted"
+                          }`}
                           onClick={() => handleIssueClick(i.key)}
-                        />
+                        >
+                          <span>{i.label}</span>
+                          <span className="tabular-nums font-medium text-amber-500">
+                            {i.count}
+                          </span>
+                        </button>
                       ))}
                     </div>
 
