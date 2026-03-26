@@ -130,6 +130,11 @@ jobs:
           git diff --cached --quiet || git commit -m "chart: bump to $CHART_VERSION"
           git push
 
+      - name: Bake image tag into chart defaults
+        if: github.event_name == 'push'
+        run: |
+          sed -i "s/tag: latest/tag: sha-${GITHUB_SHA::7}/" chart/rig/values.yaml
+
       - name: Helm dependency update
         run: helm dependency update chart/rig
 
@@ -165,17 +170,13 @@ jobs:
           sed -i "s/chartVersion: .*/chartVersion: $CHART_VERSION/" apps/rig/config.yaml
 
           if [ "$EVENT_NAME" = "push" ]; then
-            # On push: update rig image tag
-            TAG="sha-${GITHUB_SHA::7}"
-            sed -i "0,/tag: sha-[a-f0-9]*/s//tag: $TAG/" apps/rig/values.yaml
-            COMMIT_MSG="rig: $CHART_VERSION / $TAG"
+            COMMIT_MSG="rig: $CHART_VERSION"
           else
-            # On dispatch: chart version only — subchart image tags are baked into the chart
             COMMIT_MSG="rig: $CHART_VERSION / subchart $SOURCE update"
           fi
 
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add apps/rig/config.yaml apps/rig/values.yaml
+          git add apps/rig/config.yaml
           git diff --cached --quiet || git commit -m "$COMMIT_MSG"
           git push
