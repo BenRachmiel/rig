@@ -233,12 +233,7 @@ export default function LibraryPage() {
       {bgEnabled && wallUrls.length > 0 && (
         <div className="fixed inset-0 -z-10 overflow-hidden pointer-events-none opacity-[0.12]">
           <div
-            className="animate-wall-pan"
-            style={{
-              display: "grid",
-              gridTemplateColumns: `repeat(${COLS}, 1fr)`,
-              width: "100%",
-            }}
+            className="animate-wall-pan grid grid-cols-4 md:grid-cols-8 w-full"
           >
             {/* Render two copies of the grid for seamless looping */}
             {[...wallUrls, ...wallUrls].map((url, i) => (

@@ -156,12 +156,8 @@ jobs:
         env:
           EVENT_NAME: ${{ github.event_name }}
           SOURCE: ${{ github.event.client_payload.source }}
-          SOURCE_IMAGE_TAG: ${{ github.event.client_payload.imageTag }}
-          SOURCE_FRONTEND_TAG: ${{ github.event.client_payload.frontendTag }}
-          SOURCE_BACKEND_TAG: ${{ github.event.client_payload.backendTag }}
           CHART_VERSION: ${{ needs.helm.outputs.chart-version }}
         run: |
-          TAG="sha-${GITHUB_SHA::7}"
           git clone git@github.com:BenRachmiel/talos-cluster.git
           cd talos-cluster
 
@@ -170,20 +166,11 @@ jobs:
 
           if [ "$EVENT_NAME" = "push" ]; then
             # On push: update rig image tag
+            TAG="sha-${GITHUB_SHA::7}"
             sed -i "0,/tag: sha-[a-f0-9]*/s//tag: $TAG/" apps/rig/values.yaml
             COMMIT_MSG="rig: $CHART_VERSION / $TAG"
           else
-            # On dispatch: update sub-chart image tags only
-            if [ "$SOURCE" = "preamp" ] && [ -n "$SOURCE_IMAGE_TAG" ]; then
-              sed -i "/preamp:/,/gain-downloader:/{s/tag: sha-[a-f0-9]*/tag: $SOURCE_IMAGE_TAG/g}" apps/rig/values.yaml
-            elif [ "$SOURCE" = "gain" ]; then
-              if [ -n "$SOURCE_FRONTEND_TAG" ]; then
-                sed -i '/gain-downloader:/,${/frontend:/{n;s/tag: sha-[a-f0-9]*/tag: '"$SOURCE_FRONTEND_TAG"'/}}' apps/rig/values.yaml
-              fi
-              if [ -n "$SOURCE_BACKEND_TAG" ]; then
-                sed -i '/gain-downloader:/,${/backend:/{n;s/tag: sha-[a-f0-9]*/tag: '"$SOURCE_BACKEND_TAG"'/}}' apps/rig/values.yaml
-              fi
-            fi
+            # On dispatch: chart version only — subchart image tags are baked into the chart
             COMMIT_MSG="rig: $CHART_VERSION / subchart $SOURCE update"
           fi
 
