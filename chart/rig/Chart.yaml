@@ -1,12 +1,12 @@
 apiVersion: v2
 name: rig
 description: Music library management UI with integrated backends
-version: 0.1.22
-appVersion: "0.1.22"
+version: 0.1.23
+appVersion: "0.1.23"
 type: application
 dependencies:
   - name: preamp
-    version: "0.2.5"
+    version: "0.2.6"
     repository: "oci://ghcr.io/benrachmiel/preamp/charts"
     condition: preamp.enabled
   - name: gain-downloader
