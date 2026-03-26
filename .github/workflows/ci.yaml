@@ -12,6 +12,10 @@ permissions:
   contents: write
   packages: write
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   lint:
     runs-on: ubuntu-latest
@@ -41,7 +45,7 @@ jobs:
 
   build:
     needs: [lint]
-    if: github.event_name == 'push' || github.event_name == 'repository_dispatch'
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     env:
       REPO_LC: ""
@@ -74,7 +78,11 @@ jobs:
 
   helm:
     needs: [lint, build]
-    if: github.event_name == 'push' || github.event_name == 'repository_dispatch'
+    if: |
+      always() &&
+      needs.lint.result == 'success' &&
+      (needs.build.result == 'success' || needs.build.result == 'skipped') &&
+      (github.event_name == 'push' || github.event_name == 'repository_dispatch')
     runs-on: ubuntu-latest
     outputs:
       chart-version: ${{ steps.version.outputs.version }}
@@ -133,7 +141,11 @@ jobs:
 
   update-gitops:
     needs: [build, helm]
-    if: github.event_name == 'push' || github.event_name == 'repository_dispatch'
+    if: |
+      always() &&
+      needs.helm.result == 'success' &&
+      (needs.build.result == 'success' || needs.build.result == 'skipped') &&
+      (github.event_name == 'push' || github.event_name == 'repository_dispatch')
     runs-on: ubuntu-latest
     steps:
       - uses: webfactory/ssh-agent@v0.10.0
@@ -153,14 +165,15 @@ jobs:
           git clone git@github.com:BenRachmiel/talos-cluster.git
           cd talos-cluster
 
-          # Bump chart version in config
+          # Always bump rig chart version in config
           sed -i "s/chartVersion: .*/chartVersion: $CHART_VERSION/" apps/rig/config.yaml
 
-          # Always update rig image tag
-          sed -i "0,/tag: sha-[a-f0-9]*/s//tag: $TAG/" apps/rig/values.yaml
-
-          # On dispatch, also update sub-chart image tags
-          if [ "$EVENT_NAME" = "repository_dispatch" ]; then
+          if [ "$EVENT_NAME" = "push" ]; then
+            # On push: update rig image tag
+            sed -i "0,/tag: sha-[a-f0-9]*/s//tag: $TAG/" apps/rig/values.yaml
+            COMMIT_MSG="rig: $CHART_VERSION / $TAG"
+          else
+            # On dispatch: update sub-chart image tags only
             if [ "$SOURCE" = "preamp" ] && [ -n "$SOURCE_IMAGE_TAG" ]; then
               sed -i "/preamp:/,/gain-downloader:/{s/tag: sha-[a-f0-9]*/tag: $SOURCE_IMAGE_TAG/g}" apps/rig/values.yaml
             elif [ "$SOURCE" = "gain" ]; then
@@ -171,10 +184,11 @@ jobs:
                 sed -i '/gain-downloader:/,${/backend:/{n;s/tag: sha-[a-f0-9]*/tag: '"$SOURCE_BACKEND_TAG"'/}}' apps/rig/values.yaml
               fi
             fi
+            COMMIT_MSG="rig: $CHART_VERSION / subchart $SOURCE update"
           fi
 
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add apps/rig/config.yaml apps/rig/values.yaml
-          git diff --cached --quiet || git commit -m "rig: $CHART_VERSION / $TAG"
+          git diff --cached --quiet || git commit -m "$COMMIT_MSG"
           git push
