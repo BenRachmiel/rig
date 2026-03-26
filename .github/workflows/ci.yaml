@@ -165,10 +165,10 @@ jobs:
               sed -i "/preamp:/,/gain-downloader:/{s/tag: sha-[a-f0-9]*/tag: $SOURCE_IMAGE_TAG/g}" apps/rig/values.yaml
             elif [ "$SOURCE" = "gain" ]; then
               if [ -n "$SOURCE_FRONTEND_TAG" ]; then
-                sed -i "/gain-downloader:/,\$/{/frontend:/{n;s/tag: sha-[a-f0-9]*/tag: $SOURCE_FRONTEND_TAG/}}" apps/rig/values.yaml
+                sed -i '/gain-downloader:/,${/frontend:/{n;s/tag: sha-[a-f0-9]*/tag: '"$SOURCE_FRONTEND_TAG"'/}}' apps/rig/values.yaml
               fi
               if [ -n "$SOURCE_BACKEND_TAG" ]; then
-                sed -i "/gain-downloader:/,\$/{/backend:/{n;s/tag: sha-[a-f0-9]*/tag: $SOURCE_BACKEND_TAG/}}" apps/rig/values.yaml
+                sed -i '/gain-downloader:/,${/backend:/{n;s/tag: sha-[a-f0-9]*/tag: '"$SOURCE_BACKEND_TAG"'/}}' apps/rig/values.yaml
               fi
             fi
           fi
