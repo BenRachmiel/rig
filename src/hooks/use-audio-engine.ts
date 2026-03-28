@@ -41,6 +41,20 @@ export function useAudioEngine(callbacks: AudioEngineCallbacks) {
   const [analyserNode, setAnalyserNode] = useState<AnalyserNode | null>(null);
 
   const progressRafRef = useRef<number | null>(null);
+  const wakeLockRef = useRef<WakeLockSentinel | null>(null);
+
+  const acquireWakeLock = useCallback(async () => {
+    if (wakeLockRef.current || !("wakeLock" in navigator)) return;
+    try {
+      wakeLockRef.current = await navigator.wakeLock.request("screen");
+      wakeLockRef.current.addEventListener("release", () => { wakeLockRef.current = null; });
+    } catch { /* user denied or not supported */ }
+  }, []);
+
+  const releaseWakeLock = useCallback(() => {
+    wakeLockRef.current?.release();
+    wakeLockRef.current = null;
+  }, []);
 
   useEffect(() => {
     const a = new Audio();
@@ -59,8 +73,15 @@ export function useAudioEngine(callbacks: AudioEngineCallbacks) {
       if (taperTimerRef.current) clearTimeout(taperTimerRef.current);
       if (progressRafRef.current) cancelAnimationFrame(progressRafRef.current);
       audioCtxRef.current?.close();
+      releaseWakeLock();
     };
-  }, []);
+  }, [releaseWakeLock]);
+
+  // Acquire/release wake lock based on playback state
+  useEffect(() => {
+    if (isPlaying) acquireWakeLock();
+    else releaseWakeLock();
+  }, [isPlaying, acquireWakeLock, releaseWakeLock]);
 
   const ensureAudioContext = useCallback(() => {
     if (audioCtxRef.current) return;
