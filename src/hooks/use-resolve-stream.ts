@@ -8,6 +8,7 @@ import type { ResolveMeta, Track } from "@/types/api";
 export function useResolveStream() {
   const esRef = useRef<EventSource | null>(null);
   const resolvingAlbumId = useAppStore((s) => s.resolvingAlbumId);
+  const resolvingSource = useAppStore((s) => s.resolvingSource);
 
   useEffect(() => {
     if (resolvingAlbumId === null) {
@@ -18,7 +19,9 @@ export function useResolveStream() {
 
     esRef.current?.close();
 
-    const es = new EventSource(resolveStreamUrl(resolvingAlbumId));
+    const es = new EventSource(
+      resolveStreamUrl(resolvingAlbumId, resolvingSource ?? "tidal")
+    );
     esRef.current = es;
 
     es.addEventListener("meta", (e: MessageEvent) => {
@@ -53,5 +56,5 @@ export function useResolveStream() {
       es.close();
       esRef.current = null;
     };
-  }, [resolvingAlbumId]);
+  }, [resolvingAlbumId, resolvingSource]);
 }

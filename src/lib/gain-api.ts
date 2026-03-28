@@ -1,4 +1,4 @@
-import type { Album, Job, Track } from "@/types/api";
+import type { Album, Job, Source, Track } from "@/types/api";
 
 const API = "/api/gain";
 
@@ -8,9 +8,13 @@ async function json<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-export async function searchAlbums(q: string): Promise<Album[]> {
+export async function searchAlbums(
+  q: string,
+  source: Source = "tidal",
+  page: number = 1
+): Promise<Album[]> {
   const data = await json<{ albums?: Album[]; error?: string }>(
-    `/search?q=${encodeURIComponent(q)}`
+    `/search?q=${encodeURIComponent(q)}&source=${source}&page=${page}`
   );
   if (data.error) throw new Error(data.error);
   return data.albums ?? [];
@@ -23,6 +27,7 @@ export async function startJob(payload: {
   resolved: boolean;
   total_tracks: number;
   cover_url?: string;
+  total_discs?: number;
 }): Promise<string> {
   const data = await json<{ job_id: string }>("/start", {
     method: "POST",
@@ -59,6 +64,9 @@ export function statusStreamUrl(lastId: number): string {
   return `${API}/status?last_id=${lastId}`;
 }
 
-export function resolveStreamUrl(albumId: number): string {
-  return `${API}/resolve/${albumId}`;
+export function resolveStreamUrl(
+  albumId: string,
+  source: Source = "tidal"
+): string {
+  return `${API}/resolve/${encodeURIComponent(albumId)}?source=${source}`;
 }

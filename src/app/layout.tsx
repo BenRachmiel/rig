@@ -40,7 +40,7 @@ export default function RootLayout({
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased dark`}
     >
-      <body className="min-h-full flex">
+      <body className="h-full flex">
         <AppShell>{children}</AppShell>
       </body>
     </html>

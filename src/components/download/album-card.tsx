@@ -6,6 +6,25 @@ import type { Album } from "@/types/api";
 
 const RING_CIRC = 87.96;
 
+function KindLabel({ album }: { album: Album }) {
+  if (album.source !== "youtube") return null;
+  const label = album.kind === "playlist" ? "Playlist" : "Video";
+  return (
+    <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-500/15 text-red-400 font-medium">
+      {label}
+    </span>
+  );
+}
+
+function SourceBadge({ album }: { album: Album }) {
+  if (!album.source || album.source === "tidal") return null;
+  return (
+    <span className="absolute top-1.5 left-1.5 text-[10px] px-1.5 py-0.5 rounded bg-red-600/80 text-white font-medium leading-none z-10">
+      YT
+    </span>
+  );
+}
+
 export function AlbumCard({ album }: { album: Album }) {
   const [imgError, setImgError] = useState(false);
   const resolvingAlbumId = useAppStore((s) => s.resolvingAlbumId);
@@ -33,6 +52,7 @@ export function AlbumCard({ album }: { album: Album }) {
       className={`group relative overflow-hidden rounded-lg border bg-card cursor-pointer transition-colors hover:border-muted-foreground/30 min-h-[44px] ${isResolving ? "pointer-events-none" : ""}`}
       onClick={handleClick}
     >
+      <SourceBadge album={album} />
       {!imgError && album.cover ? (
         <img
           src={album.cover}
@@ -53,8 +73,11 @@ export function AlbumCard({ album }: { album: Album }) {
         <div className="text-xs text-muted-foreground truncate">
           {album.artist}
         </div>
-        <div className="text-xs text-muted-foreground/60">
-          {album.year} &middot; {album.tracks} tracks
+        <div className="text-xs text-muted-foreground/60 flex items-center gap-1.5">
+          {album.year && <span>{album.year}</span>}
+          {album.year && <span>&middot;</span>}
+          <span>{album.tracks} {album.tracks === 1 ? "track" : "tracks"}</span>
+          <KindLabel album={album} />
         </div>
       </div>
 

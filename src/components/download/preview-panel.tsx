@@ -8,19 +8,19 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useAppStore } from "@/stores/app-store";
 
-function TrackRow({ track }: { track: { index: number; title: string; duration: string } }) {
-  const selected = useAppStore((s) => s.selectedTrackIndices.has(track.index));
+function TrackRow({ track, arrayIndex, multiDisc }: { track: { index: number; title: string; duration: string; disc?: number }; arrayIndex: number; multiDisc: boolean }) {
+  const selected = useAppStore((s) => s.selectedTrackIndices.has(arrayIndex));
   const toggleTrack = useAppStore((s) => s.toggleTrack);
 
   return (
     <div className="flex items-center gap-2 py-1 border-b border-border/30 last:border-b-0 text-sm">
       <Checkbox
         checked={selected}
-        onCheckedChange={() => toggleTrack(track.index)}
+        onCheckedChange={() => toggleTrack(arrayIndex)}
         className="h-3.5 w-3.5"
       />
       <span className="w-6 text-right text-xs text-muted-foreground/60 font-mono shrink-0">
-        {track.index}
+        {multiDisc ? `${track.disc ?? 1}-${track.index}` : track.index}
       </span>
       <span className="flex-1 min-w-0 truncate" title={track.title}>
         {track.title}
@@ -165,8 +165,8 @@ export function PreviewPanel() {
 
       {resolvedTracks.length > 0 && (
         <ScrollArea className="flex-1 min-h-0 mt-2">
-          {resolvedTracks.map((track) => (
-            <TrackRow key={track.index} track={track} />
+          {resolvedTracks.map((track, i) => (
+            <TrackRow key={i} track={track} arrayIndex={i} multiDisc={(resolveMeta?.total_discs ?? 1) > 1} />
           ))}
         </ScrollArea>
       )}

@@ -1,11 +1,15 @@
 // Gain types
+export type Source = "tidal" | "youtube";
+
 export interface Album {
-  id: number;
+  id: string;
   title: string;
   artist: string;
   cover: string;
   tracks: number;
   year: string;
+  source: Source;
+  kind?: "album" | "video" | "playlist";
 }
 
 export interface Track {
@@ -15,6 +19,7 @@ export interface Track {
   album: string;
   duration: string;
   url: string;
+  disc?: number;
 }
 
 export interface ResolveMeta {
@@ -24,6 +29,7 @@ export interface ResolveMeta {
   existing_artists: string[];
   total: number;
   cover_url?: string;
+  total_discs?: number;
 }
 
 export interface JobState {
@@ -121,6 +127,44 @@ export interface AlbumIssue {
 export interface IssuesResponse {
   items: SongIssue[] | AlbumIssue[];
   total: number;
+}
+
+// Subsonic (Reverb)
+export interface SongID3 {
+  id: string;
+  title: string;
+  album: string;
+  artist: string;
+  albumId: string;
+  artistId: string;
+  track: number;
+  disc: number;
+  year: number;
+  genre: string;
+  duration: number;
+  size: number;
+  suffix: string;
+  bitRate: number;
+  contentType: string;
+  coverArt: string;
+}
+
+export interface AlbumWithSongsID3 {
+  id: string;
+  name: string;
+  artist: string;
+  artistId: string;
+  coverArt: string;
+  songCount: number;
+  duration: number;
+  year: number;
+  genre: string;
+  created: string;
+  song: SongID3[];
+}
+
+export interface SubsonicResponse<T> {
+  "subsonic-response": T & { status: string };
 }
 
 // Library types

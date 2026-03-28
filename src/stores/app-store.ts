@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import type {
   Album,
+  Source,
   Track,
   ResolveMeta,
   JobState,
@@ -11,13 +12,20 @@ import type {
 import * as gainApi from "@/lib/gain-api";
 
 interface AppState {
+  // Source
+  source: Source;
+
   // Search
   albums: Album[];
   searchLoading: boolean;
   searchError: string | null;
+  searchQuery: string;
+  searchPage: number;
+  hasMore: boolean;
 
   // Resolution
-  resolvingAlbumId: number | null;
+  resolvingAlbumId: string | null;
+  resolvingSource: Source | null;
   resolveMeta: ResolveMeta | null;
   resolvedTracks: Track[];
   selectedTrackIndices: Set<number>;
@@ -38,8 +46,10 @@ interface AppState {
   dockTab: "preview" | "jobs";
 
   // Actions
+  setSource: (source: Source) => void;
   search: (q: string) => Promise<void>;
-  startResolve: (albumId: number) => void;
+  loadMore: () => Promise<void>;
+  startResolve: (albumId: string) => void;
   setResolveMeta: (meta: ResolveMeta) => void;
   addResolvedTrack: (track: Track) => void;
   finishResolve: () => void;
@@ -62,10 +72,15 @@ interface AppState {
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
+  source: "tidal" as Source,
   albums: [],
   searchLoading: false,
   searchError: null,
+  searchQuery: "",
+  searchPage: 1,
+  hasMore: false,
   resolvingAlbumId: null,
+  resolvingSource: null,
   resolveMeta: null,
   resolvedTracks: [],
   selectedTrackIndices: new Set(),
@@ -79,11 +94,35 @@ export const useAppStore = create<AppState>((set, get) => ({
   dockOpen: false,
   dockTab: "preview",
 
+  setSource: (source) => set({ source }),
+
   search: async (q) => {
-    set({ searchLoading: true, searchError: null });
+    const { source } = get();
+    set({ searchLoading: true, searchError: null, searchQuery: q, searchPage: 1 });
     try {
-      const albums = await gainApi.searchAlbums(q);
-      set({ albums, searchLoading: false });
+      const albums = await gainApi.searchAlbums(q, source, 1);
+      set({ albums, searchLoading: false, hasMore: albums.length >= 20 });
+    } catch (e) {
+      set({
+        searchError: e instanceof Error ? e.message : String(e),
+        searchLoading: false,
+      });
+    }
+  },
+
+  loadMore: async () => {
+    const { source, searchQuery, searchPage, albums, searchLoading } = get();
+    if (searchLoading || !searchQuery) return;
+    const nextPage = searchPage + 1;
+    set({ searchLoading: true });
+    try {
+      const more = await gainApi.searchAlbums(searchQuery, source, nextPage);
+      set({
+        albums: [...albums, ...more],
+        searchPage: nextPage,
+        searchLoading: false,
+        hasMore: more.length >= 20,
+      });
     } catch (e) {
       set({
         searchError: e instanceof Error ? e.message : String(e),
@@ -93,8 +132,10 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   startResolve: (albumId) => {
+    const { source } = get();
     set({
       resolvingAlbumId: albumId,
+      resolvingSource: source,
       resolveMeta: null,
       resolvedTracks: [],
       selectedTrackIndices: new Set(),
@@ -117,8 +158,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       });
     } else {
       set((s) => {
+        const arrayIndex = s.resolvedTracks.length;
         const newSelected = new Set(s.selectedTrackIndices);
-        newSelected.add(track.index);
+        newSelected.add(arrayIndex);
         return {
           resolvedTracks: [...s.resolvedTracks, track],
           selectedTrackIndices: newSelected,
@@ -137,6 +179,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   cancelResolve: () =>
     set({
       resolvingAlbumId: null,
+      resolvingSource: null,
       resolveMeta: null,
       resolvedTracks: [],
       selectedTrackIndices: new Set(),
@@ -154,7 +197,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   selectAllTracks: () =>
     set((s) => ({
-      selectedTrackIndices: new Set(s.resolvedTracks.map((t) => t.index)),
+      selectedTrackIndices: new Set(s.resolvedTracks.map((_, i) => i)),
     })),
 
   deselectAllTracks: () => set({ selectedTrackIndices: new Set() }),
@@ -168,8 +211,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       resolveMeta,
     } = get();
     const resolved = resolvingAlbumId === null;
-    const selectedTracks = resolvedTracks.filter((t) =>
-      selectedTrackIndices.has(t.index)
+    const selectedTracks = resolvedTracks.filter((_, i) =>
+      selectedTrackIndices.has(i)
     );
 
     const jobId = await gainApi.startJob({
@@ -179,6 +222,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       resolved,
       total_tracks: totalTracks || selectedTracks.length,
       cover_url: resolveMeta?.cover_url,
+      total_discs: resolveMeta?.total_discs ?? 1,
     });
 
     const newJob: JobState = {
