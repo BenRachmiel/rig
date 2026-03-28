@@ -6,9 +6,10 @@ import type { AlbumWithSongsID3 } from "@/types/api";
 interface RevealUIProps {
   album: AlbumWithSongsID3;
   onRestart: () => void;
+  dominantColor?: string | null;
 }
 
-export function RevealUI({ album, onRestart }: RevealUIProps) {
+export function RevealUI({ album, onRestart, dominantColor }: RevealUIProps) {
   const meta = [
     album.year > 0 ? String(album.year) : null,
     album.genre || null,
@@ -17,16 +18,24 @@ export function RevealUI({ album, onRestart }: RevealUIProps) {
   return (
     <div className="flex flex-col items-center w-full gap-5 justify-center">
       {/* Album art with blur-in reveal and reactive glow */}
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src={reverbApi.coverArtUrl(album.coverArt, 512)}
-        alt={`${album.name} cover`}
-        className="w-48 h-48 sm:w-56 sm:h-56 rounded-md object-cover"
-        style={{
-          animation: "rv-reveal 1200ms ease-out forwards",
-          boxShadow: "0 0 calc(var(--rv-energy) * 80px) calc(var(--rv-energy) * 20px) oklch(1 0 0 / calc(var(--rv-energy) * 0.08))",
-        }}
-      />
+      <div className="relative">
+        {dominantColor && (
+          <div
+            className="absolute inset-0 rounded-md blur-3xl opacity-20 animate-in fade-in duration-1000"
+            style={{ background: dominantColor }}
+          />
+        )}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={reverbApi.coverArtUrl(album.coverArt, 512)}
+          alt={`${album.name} cover`}
+          className="relative w-48 h-48 sm:w-56 sm:h-56 rounded-md object-cover"
+          style={{
+            animation: "rv-reveal 1200ms ease-out forwards",
+            boxShadow: "0 0 calc(var(--rv-energy) * 80px) calc(var(--rv-energy) * 20px) oklch(1 0 0 / calc(var(--rv-energy) * 0.08))",
+          }}
+        />
+      </div>
 
       {/* Album name — delayed fade in */}
       <h2

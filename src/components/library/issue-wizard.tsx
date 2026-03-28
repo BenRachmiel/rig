@@ -238,9 +238,7 @@ export function IssueWizard({
       if (genre) tags.genre = genre;
       if (year) tags.year = parseInt(year, 10);
 
-      for (const file of audioFiles) {
-        await libraryApi.writeTags(file.path, tags);
-      }
+      await Promise.all(audioFiles.map((file) => libraryApi.writeTags(file.path, tags)));
 
       toast.success(`Updated ${audioFiles.length} tracks in "${currentAlbum.name}"`);
       setResolved((r) => r + 1);
@@ -285,17 +283,16 @@ export function IssueWizard({
     if (!currentGroup) return;
     setSaving(true);
     try {
-      for (let i = 0; i < currentGroup.songs.length; i++) {
-        const song = currentGroup.songs[i];
-        const fields = songFields[i];
-        if (!fields) continue;
-
-        const tags: Record<string, string | number | null> = {};
-        if (fields.genre) tags.genre = fields.genre;
-        if (fields.year) tags.year = parseInt(fields.year, 10);
-
-        await libraryApi.writeTags(song.path, tags);
-      }
+      await Promise.all(
+        currentGroup.songs.map((song, i) => {
+          const fields = songFields[i];
+          if (!fields) return Promise.resolve();
+          const tags: Record<string, string | number | null> = {};
+          if (fields.genre) tags.genre = fields.genre;
+          if (fields.year) tags.year = parseInt(fields.year, 10);
+          return libraryApi.writeTags(song.path, tags);
+        }),
+      );
 
       toast.success(
         `Updated ${currentGroup.songs.length} tracks in "${currentGroup.album}"`,

@@ -1,8 +1,9 @@
 "use client";
 
-import { useReducer, useEffect, useCallback, useRef } from "react";
+import { useReducer, useEffect, useCallback, useRef, useState } from "react";
 import { reverbReducer, initialState, makeClip } from "./reducer";
-import { useAudioEngine } from "@/hooks/use-audio-engine";
+import { usePlayback } from "@/contexts/playback-context";
+import { usePlaybackStore } from "@/stores/playback-store";
 import { useAudioReactivity } from "@/hooks/use-audio-reactivity";
 import { reverbApi } from "@/lib/reverb-api";
 import { ClipUI } from "@/components/reverb/clip-ui";
@@ -13,13 +14,29 @@ export default function ReverbPage() {
   const [state, dispatch] = useReducer(reverbReducer, initialState);
   const fetchingRef = useRef(false);
 
-  const engine = useAudioEngine({
-    onClipEnd: () => dispatch({ type: "SKIP" }),
-    onAlbumTrackChange: (index) => dispatch({ type: "TRACK_CHANGE", index }),
-    onAlbumEnd: () => dispatch({ type: "REVEAL" }),
-  });
-
+  const engine = usePlayback();
   const reactivityRef = useAudioReactivity(engine.analyserNode);
+  const restoredRef = useRef(false);
+
+  // Register Reverb-specific callbacks on mount, restore album if active, clean up on unmount
+  useEffect(() => {
+    engine.setCallbacks({
+      onClipEnd: () => dispatch({ type: "SKIP" }),
+      onAlbumTrackChange: (index) => dispatch({ type: "TRACK_CHANGE", index }),
+      onAlbumEnd: () => dispatch({ type: "REVEAL" }),
+    });
+    usePlaybackStore.getState().hideMiniPlayer();
+
+    // Restore album view if audio is still playing from a previous visit
+    const { reverbAlbum, mode, isPlaying } = usePlaybackStore.getState();
+    if (reverbAlbum && mode === "album" && isPlaying) {
+      restoredRef.current = true;
+      dispatch({ type: "RESTORE", album: reverbAlbum, trackIndex: engine.albumTrackIndex });
+    }
+
+    return () => engine.clearCallbacks();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Fetch pool
   const fetchPool = useCallback(async () => {
@@ -47,10 +64,18 @@ export default function ReverbPage() {
     if (state.phase !== "clip" || !state.currentClip) return;
     engine.playClip(state.currentClip);
 
+    // Preload N+1 via inactive audio element
     const nextIndex = state.poolIndex + 1;
     if (nextIndex < state.pool.length) {
       const nextClip = makeClip(state.pool[nextIndex]);
       engine.preloadClip(nextClip);
+    }
+
+    // Preload N+2 via fetch to prime HTTP cache
+    const aheadIndex = state.poolIndex + 2;
+    if (aheadIndex < state.pool.length) {
+      const url = reverbApi.streamUrl(state.pool[aheadIndex].id);
+      fetch(url, { priority: "low" } as RequestInit).catch(() => {});
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.currentClip]);
@@ -69,18 +94,47 @@ export default function ReverbPage() {
 
   useEffect(() => {
     if (state.phase !== "album" || !state.album) return;
+    // Skip if restored from persisted state — audio is already playing
+    if (restoredRef.current) {
+      restoredRef.current = false;
+      return;
+    }
     engine.playAlbum(state.album.song, 0);
+
+    usePlaybackStore.getState().startPlayback(
+      {
+        title: state.album.song[0]?.title ?? state.album.name,
+        artist: state.album.artist,
+        album: state.album.name,
+      },
+      "album",
+      state.album,
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.album]);
 
   useEffect(() => {
     if (state.phase !== "reveal" || !state.album) return;
     engine.stop();
+    usePlaybackStore.getState().clearPlayback();
     for (const song of state.album.song) {
       reverbApi.scrobble(song.id);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.phase]);
+
+  // Sync album track changes to playback store
+  useEffect(() => {
+    if (state.phase !== "album" || !state.album) return;
+    const song = state.album.song[engine.albumTrackIndex];
+    if (song) {
+      usePlaybackStore.getState().setTrack({
+        title: song.title,
+        artist: song.artist,
+        album: state.album.name,
+      });
+    }
+  }, [engine.albumTrackIndex, state.phase, state.album]);
 
   const handlePauseToggle = useCallback(() => {
     if (engine.isPlaying) engine.pause();
@@ -89,10 +143,37 @@ export default function ReverbPage() {
 
   const handleSkip = useCallback(() => dispatch({ type: "SKIP" }), []);
   const handleBack = useCallback(() => dispatch({ type: "BACK" }), []);
+  const [coverColor, setCoverColor] = useState<string | null>(null);
+  const coverImgRef = useRef<HTMLImageElement | null>(null);
+
   const handleCommit = useCallback(() => {
     engine.stop();
     dispatch({ type: "COMMIT" });
-  }, [engine]);
+    setCoverColor(null);
+
+    // Cancel previous in-flight cover preload
+    if (coverImgRef.current) coverImgRef.current.onload = null;
+
+    if (state.currentClip) {
+      const coverUrl = reverbApi.coverArtUrl(state.currentClip.song.albumId, 512);
+      const img = new window.Image();
+      img.crossOrigin = "anonymous";
+      coverImgRef.current = img;
+      img.onload = () => {
+        try {
+          const c = document.createElement("canvas");
+          c.width = c.height = 1;
+          const ctx = c.getContext("2d");
+          if (ctx) {
+            ctx.drawImage(img, 0, 0, 1, 1);
+            const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data;
+            setCoverColor(`rgb(${r},${g},${b})`);
+          }
+        } catch { /* tainted canvas is fine — art is still cached */ }
+      };
+      img.src = coverUrl;
+    }
+  }, [engine, state.currentClip]);
   const handleRestart = useCallback(() => dispatch({ type: "RESTART" }), []);
 
   const handleStart = handleRestart;
@@ -120,12 +201,27 @@ export default function ReverbPage() {
           </div>
         )}
 
-        {/* Loading */}
-        {(state.phase === "loading" || state.phase === "album_loading") && (
-          <div className="flex items-center gap-2 animate-in fade-in duration-300">
-            <div className="size-1 rounded-full bg-white/30 animate-pulse" />
-            <div className="size-1 rounded-full bg-white/30 animate-pulse" style={{ animationDelay: "150ms" }} />
-            <div className="size-1 rounded-full bg-white/30 animate-pulse" style={{ animationDelay: "300ms" }} />
+        {/* Loading — clip pool fetch */}
+        {state.phase === "loading" && (
+          <div className="flex flex-col items-center gap-3 animate-in fade-in duration-300">
+            <div className="flex items-center gap-2">
+              <div className="size-1 rounded-full bg-white/30 animate-pulse" />
+              <div className="size-1 rounded-full bg-white/30 animate-pulse" style={{ animationDelay: "150ms" }} />
+              <div className="size-1 rounded-full bg-white/30 animate-pulse" style={{ animationDelay: "300ms" }} />
+            </div>
+            <span className="text-[10px] tracking-[0.2em] uppercase opacity-20">
+              fetching clips
+            </span>
+          </div>
+        )}
+
+        {/* Loading — album metadata fetch (skeleton) */}
+        {state.phase === "album_loading" && (
+          <div className="flex flex-col items-center gap-5 w-full animate-in fade-in duration-300">
+            <div className="w-48 h-48 sm:w-56 sm:h-56 rounded-md bg-white/5 animate-pulse" />
+            <div className="h-4 w-32 rounded bg-white/5 animate-pulse" />
+            <div className="h-3 w-24 rounded bg-white/5 animate-pulse" />
+            <div className="h-2 w-20 rounded bg-white/5 animate-pulse" />
           </div>
         )}
 
@@ -168,7 +264,17 @@ export default function ReverbPage() {
             <RevealUI
               album={state.album}
               onRestart={handleRestart}
+              dominantColor={coverColor}
             />
+          </div>
+        )}
+
+        {/* Low pool indicator */}
+        {state.phase === "clip" && state.needsRefill && fetchingRef.current && (
+          <div className="absolute bottom-4 left-1/2 -translate-x-1/2">
+            <span className="text-[10px] tracking-widest uppercase opacity-20 animate-pulse">
+              loading more...
+            </span>
           </div>
         )}
 

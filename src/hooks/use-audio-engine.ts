@@ -5,13 +5,70 @@ import type { Clip } from "@/app/reverb/reducer";
 import type { SongID3 } from "@/types/api";
 import { reverbApi } from "@/lib/reverb-api";
 
-interface AudioEngineCallbacks {
+export interface AudioEngineCallbacks {
   onClipEnd: () => void;
   onAlbumTrackChange: (index: number) => void;
   onAlbumEnd: () => void;
 }
 
 const TAPER_MS = 400;
+const LOAD_TIMEOUT_MS = 8_000;
+const MAX_RETRIES = 3;
+const RETRY_DELAYS = [500, 1_500, 3_000];
+
+/** Wait for audio element to load metadata, with timeout and error handling. */
+function waitForLoad(el: HTMLAudioElement, url: string, timeoutMs = LOAD_TIMEOUT_MS): Promise<void> {
+  // Abort any in-progress load cleanly before starting a new one.
+  // Setting src="" triggers an abort event for the old load; we drain it
+  // with a no-op handler so it doesn't hit our real error listener.
+  el.src = "";
+  return new Promise<void>((resolve, reject) => {
+    const cleanup = () => {
+      clearTimeout(timer);
+      el.removeEventListener("loadedmetadata", onLoad);
+      el.removeEventListener("error", onError);
+    };
+    const onLoad = () => { cleanup(); resolve(); };
+    const onError = () => {
+      cleanup();
+      const code = el.error?.code;
+      // MEDIA_ERR_ABORTED (code 1) from the src="" reset — ignore
+      if (code === MediaError.MEDIA_ERR_ABORTED) {
+        resolve(); // will be retried or superseded
+        return;
+      }
+      const msg = el.error?.message ?? "unknown";
+      reject(new Error(`Audio load failed (code=${code}): ${msg}`));
+    };
+    const timer = setTimeout(() => {
+      cleanup();
+      reject(new Error(`Audio load timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
+    el.addEventListener("loadedmetadata", onLoad, { once: true });
+    el.addEventListener("error", onError, { once: true });
+    el.src = url;
+  });
+}
+
+/** Load with retry + exponential backoff. Aborts if generation changes (new load started). */
+async function loadWithRetry(
+  el: HTMLAudioElement,
+  url: string,
+  genRef: { current: number },
+  gen: number,
+): Promise<void> {
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    if (genRef.current !== gen) throw new Error("aborted");
+    try {
+      await waitForLoad(el, url);
+      return;
+    } catch (err) {
+      if (genRef.current !== gen) throw new Error("aborted");
+      if (attempt === MAX_RETRIES) throw err;
+      await new Promise<void>((r) => setTimeout(r, RETRY_DELAYS[attempt]));
+    }
+  }
+}
 
 export function useAudioEngine(callbacks: AudioEngineCallbacks) {
   const cbRef = useRef(callbacks);
@@ -34,11 +91,14 @@ export function useAudioEngine(callbacks: AudioEngineCallbacks) {
   const albumSongsRef = useRef<SongID3[]>([]);
   const albumIndexRef = useRef(0);
   const modeRef = useRef<"clip" | "album" | "idle">("idle");
+  const loadGenRef = useRef(0);
 
   const [isPlaying, setIsPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
   const [albumTrackIndex, setAlbumTrackIndex] = useState(0);
   const [analyserNode, setAnalyserNode] = useState<AnalyserNode | null>(null);
+  const [isBuffering, setIsBuffering] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const progressRafRef = useRef<number | null>(null);
   const wakeLockRef = useRef<WakeLockSentinel | null>(null);
@@ -215,14 +275,24 @@ export function useAudioEngine(callbacks: AudioEngineCallbacks) {
       clipRef.current = clip;
       if (clipTimerRef.current) clearTimeout(clipTimerRef.current);
 
+      const gen = ++loadGenRef.current;
       const streamUrl = reverbApi.streamUrl(clip.song.id);
       const el = getActive()!;
       const inGain = getActiveGain();
 
-      el.src = streamUrl;
-      await new Promise<void>((resolve) => {
-        el.addEventListener("loadedmetadata", () => resolve(), { once: true });
-      });
+      setIsBuffering(true);
+      setLoadError(null);
+      try {
+        await loadWithRetry(el, streamUrl, loadGenRef, gen);
+      } catch (err) {
+        setIsBuffering(false);
+        if (loadGenRef.current !== gen) return; // superseded by newer load
+        setLoadError(err instanceof Error ? err.message : "Load failed");
+        cbRef.current.onClipEnd();
+        return;
+      }
+      if (loadGenRef.current !== gen) return; // superseded
+      setIsBuffering(false);
       el.currentTime = clip.seekOffset;
 
       // Taper in: start silent, ramp to 1
@@ -271,7 +341,6 @@ export function useAudioEngine(callbacks: AudioEngineCallbacks) {
       el.addEventListener(
         "loadedmetadata",
         () => {
-          // Only set seek if src hasn't been swapped by playClip
           if (el.src.includes(clip.song.id)) {
             el.currentTime = clip.seekOffset;
           }
@@ -292,6 +361,7 @@ export function useAudioEngine(callbacks: AudioEngineCallbacks) {
       modeRef.current = "album";
       albumSongsRef.current = songs;
       albumIndexRef.current = startIndex;
+      const gen = ++loadGenRef.current;
 
       if (clipTimerRef.current) clearTimeout(clipTimerRef.current);
       if (taperTimerRef.current) clearTimeout(taperTimerRef.current);
@@ -313,10 +383,14 @@ export function useAudioEngine(callbacks: AudioEngineCallbacks) {
         setAlbumTrackIndex(idx);
         cbRef.current.onAlbumTrackChange(idx);
 
-        el.src = reverbApi.streamUrl(songs[idx].id);
-        await new Promise<void>((resolve) => {
-          el.addEventListener("loadedmetadata", () => resolve(), { once: true });
-        });
+        try {
+          await loadWithRetry(el, reverbApi.streamUrl(songs[idx].id), loadGenRef, gen);
+        } catch {
+          if (loadGenRef.current !== gen) return;
+          await playTrack(idx + 1);
+          return;
+        }
+        if (loadGenRef.current !== gen) return;
         el.currentTime = 0;
         await el.play();
         setIsPlaying(true);
@@ -349,6 +423,7 @@ export function useAudioEngine(callbacks: AudioEngineCallbacks) {
   const playAlbumTrack = useCallback(
     async (index: number) => {
       if (modeRef.current !== "album") return;
+      const gen = ++loadGenRef.current;
       const el = getActive()!;
       el.onended = () => {
         const next = albumIndexRef.current + 1;
@@ -366,10 +441,21 @@ export function useAudioEngine(callbacks: AudioEngineCallbacks) {
       cbRef.current.onAlbumTrackChange(index);
 
       const song = albumSongsRef.current[index];
-      el.src = reverbApi.streamUrl(song.id);
-      await new Promise<void>((resolve) => {
-        el.addEventListener("loadedmetadata", () => resolve(), { once: true });
-      });
+      try {
+        await loadWithRetry(el, reverbApi.streamUrl(song.id), loadGenRef, gen);
+      } catch {
+        if (loadGenRef.current !== gen) return;
+        const next = albumIndexRef.current + 1;
+        if (next >= albumSongsRef.current.length) {
+          setIsPlaying(false);
+          stopProgressTracking();
+          cbRef.current.onAlbumEnd();
+          return;
+        }
+        playAlbumTrack(next);
+        return;
+      }
+      if (loadGenRef.current !== gen) return;
       el.currentTime = 0;
       await el.play();
       setIsPlaying(true);
@@ -427,6 +513,8 @@ export function useAudioEngine(callbacks: AudioEngineCallbacks) {
     resume,
     stop,
     isPlaying,
+    isBuffering,
+    loadError,
     progress,
     albumTrackIndex,
     analyserNode,

@@ -5,6 +5,7 @@ import { Play, Pause, ChevronUp, SkipBack, SkipForward } from "lucide-react";
 import { useSwipeable } from "react-swipeable";
 import { Oscilloscope } from "./waveform";
 import { CLIP_DURATION } from "@/app/reverb/reducer";
+import { formatTime } from "@/lib/utils";
 
 interface ClipUIProps {
   isPlaying: boolean;
@@ -17,10 +18,11 @@ interface ClipUIProps {
   clipGeneration?: number;
 }
 
-function formatTime(seconds: number): string {
-  const m = Math.floor(seconds / 60);
-  const s = Math.floor(seconds % 60);
-  return `${m}:${s.toString().padStart(2, "0")}`;
+const DEBOUNCE_MS = 300;
+const HINTS_SEEN_KEY = "rig:reverb-hints-seen";
+
+function haptic() {
+  navigator.vibrate?.(10);
 }
 
 export function ClipUI({
@@ -34,7 +36,21 @@ export function ClipUI({
   clipGeneration,
 }: ClipUIProps) {
   const [edgeFlash, setEdgeFlash] = useState<"left" | "right" | null>(null);
+  const [scopeDip, setScopeDip] = useState(false);
+  const [showHints, setShowHints] = useState(false);
   const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const dipTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastNavRef = useRef(0);
+  const hintsRef = useRef(false);
+
+  // Show gesture hints on first visit
+  useEffect(() => {
+    if (typeof localStorage === "undefined") return;
+    if (!localStorage.getItem(HINTS_SEEN_KEY)) {
+      setShowHints(true);
+      hintsRef.current = true;
+    }
+  }, []);
 
   const flashEdge = useCallback((side: "left" | "right") => {
     if (flashTimer.current) clearTimeout(flashTimer.current);
@@ -43,13 +59,57 @@ export function ClipUI({
   }, []);
 
   useEffect(() => {
-    return () => { if (flashTimer.current) clearTimeout(flashTimer.current); };
+    return () => {
+      if (flashTimer.current) clearTimeout(flashTimer.current);
+      if (dipTimer.current) clearTimeout(dipTimer.current);
+    };
   }, []);
 
+  // Stable identity — reads from ref to avoid cascade
+  const dismissHints = useCallback(() => {
+    if (hintsRef.current) {
+      hintsRef.current = false;
+      setShowHints(false);
+      localStorage.setItem(HINTS_SEEN_KEY, "1");
+    }
+  }, []);
+
+  /** Debounced navigation — returns false if within cooldown */
+  const tryNav = useCallback(() => {
+    const now = Date.now();
+    if (now - lastNavRef.current < DEBOUNCE_MS) return false;
+    lastNavRef.current = now;
+    dismissHints();
+    setScopeDip(true);
+    if (dipTimer.current) clearTimeout(dipTimer.current);
+    dipTimer.current = setTimeout(() => setScopeDip(false), 150);
+    return true;
+  }, [dismissHints]);
+
+  const handleSkip = useCallback(() => {
+    if (!tryNav()) return;
+    flashEdge("right");
+    haptic();
+    onSkip();
+  }, [tryNav, flashEdge, onSkip]);
+
+  const handleBack = useCallback(() => {
+    if (!tryNav()) return;
+    flashEdge("left");
+    haptic();
+    onBack();
+  }, [tryNav, flashEdge, onBack]);
+
+  const handleCommit = useCallback(() => {
+    if (!tryNav()) return;
+    haptic();
+    onCommit();
+  }, [tryNav, onCommit]);
+
   const swipeHandlers = useSwipeable({
-    onSwipedLeft: () => { flashEdge("right"); onSkip(); },
-    onSwipedRight: () => { flashEdge("left"); onBack(); },
-    onSwipedUp: onCommit,
+    onSwipedLeft: handleSkip,
+    onSwipedRight: handleBack,
+    onSwipedUp: handleCommit,
     preventScrollOnSwipe: true,
   });
 
@@ -58,15 +118,15 @@ export function ClipUI({
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
       if ((e.target as HTMLElement).isContentEditable) return;
       switch (e.key) {
-        case "ArrowLeft": e.preventDefault(); flashEdge("left"); onBack(); break;
-        case "ArrowRight": e.preventDefault(); flashEdge("right"); onSkip(); break;
-        case "ArrowUp": e.preventDefault(); onCommit(); break;
-        case " ": e.preventDefault(); onPauseToggle(); break;
+        case "ArrowLeft": e.preventDefault(); handleBack(); break;
+        case "ArrowRight": e.preventDefault(); handleSkip(); break;
+        case "ArrowUp": e.preventDefault(); handleCommit(); break;
+        case " ": e.preventDefault(); dismissHints(); onPauseToggle(); break;
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [onSkip, onBack, onCommit, onPauseToggle, flashEdge]);
+  }, [handleSkip, handleBack, handleCommit, onPauseToggle]);
 
   const elapsed = progress * CLIP_DURATION;
 
@@ -80,22 +140,40 @@ export function ClipUI({
         <div className="absolute right-0 top-0 w-1 h-full bg-white/10 animate-in fade-in duration-100" />
       )}
 
+      {/* First-visit gesture hints */}
+      {showHints && (
+        <div
+          className="absolute inset-0 z-10 flex items-center justify-center bg-black/60 animate-in fade-in duration-500"
+          onClick={dismissHints}
+        >
+          <div className="text-center space-y-3 text-white/50 text-xs tracking-wider">
+            <p><kbd className="opacity-70">arrow</kbd> / <span className="opacity-70">swipe</span> to skip</p>
+            <p><kbd className="opacity-70">up</kbd> / <span className="opacity-70">swipe up</span> to commit</p>
+            <p><kbd className="opacity-70">space</kbd> to pause</p>
+            <p className="pt-2 text-[10px] opacity-30">tap to dismiss</p>
+          </div>
+        </div>
+      )}
+
       {/* Desktop ghost buttons */}
       <button
-        onClick={onBack}
-        className="hidden sm:flex absolute left-0 top-1/2 -translate-y-1/2 p-4 opacity-0 hover:opacity-20 transition-opacity"
+        onClick={handleBack}
+        className="hidden sm:flex absolute left-0 top-1/2 -translate-y-1/2 p-4 opacity-0 hover:opacity-35 transition-opacity"
       >
         <SkipBack className="size-4" />
       </button>
       <button
-        onClick={onSkip}
-        className="hidden sm:flex absolute right-0 top-1/2 -translate-y-1/2 p-4 opacity-0 hover:opacity-20 transition-opacity"
+        onClick={handleSkip}
+        className="hidden sm:flex absolute right-0 top-1/2 -translate-y-1/2 p-4 opacity-0 hover:opacity-35 transition-opacity"
       >
         <SkipForward className="size-4" />
       </button>
 
-      {/* Oscilloscope — takes 2/3 of the height */}
-      <div className="w-full h-[50dvh] shrink-0">
+      {/* Oscilloscope — brief opacity dip on clip transition */}
+      <div
+        className="w-full h-[50dvh] shrink-0 transition-opacity duration-150"
+        style={{ opacity: scopeDip ? 0.4 : 1 }}
+      >
         <Oscilloscope analyserNode={analyserNode} isPlaying={isPlaying} generation={clipGeneration} />
       </div>
 

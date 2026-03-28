@@ -122,20 +122,28 @@ export default function LibraryPage() {
         .sort(() => Math.random() - 0.5)
         .slice(0, 10);
       let count = 0;
+      const BATCH = 4;
 
-      for (const artist of shuffled) {
+      for (let i = 0; i < shuffled.length; i += BATCH) {
         if (cancelled || count >= 24) return;
-        try {
-          const { entries } = await libraryApi.browse(artist.name);
-          const albums = entries.filter((e) => e.type === "directory");
+        const batch = shuffled.slice(i, i + BATCH);
+        const results = await Promise.allSettled(
+          batch.map((a) => libraryApi.browse(a.name)),
+        );
+        const batchUrls: string[] = [];
+        for (const result of results) {
+          if (cancelled || count >= 24) break;
+          if (result.status !== "fulfilled") continue;
+          const albums = result.value.entries.filter((e) => e.type === "directory");
           for (const album of albums.slice(0, 3)) {
-            if (cancelled || count >= 24) return;
-            const url = libraryApi.coverDirUrl(album.path);
-            setCoverUrls((prev) => [...prev, url]);
+            if (count >= 24) break;
+            batchUrls.push(libraryApi.coverDirUrl(album.path));
             count++;
           }
-        } catch {
-          // skip artist on error
+        }
+        if (cancelled) return;
+        if (batchUrls.length > 0) {
+          setCoverUrls((prev) => [...prev, ...batchUrls]);
         }
       }
     }
@@ -344,7 +352,11 @@ export default function LibraryPage() {
                 </h3>
               </CollapsibleTrigger>
               <CollapsibleContent>
-                {issues.length > 0 ? (
+                {totalIssues === 0 ? (
+                  <p className="text-sm text-muted-foreground py-4 text-center">
+                    No data quality issues found — your library is clean.
+                  </p>
+                ) : issues.length > 0 ? (
                   <div className="flex flex-col gap-3 pt-2">
                     <div className="flex flex-col gap-1">
                       {issues.map((i) => (
@@ -389,11 +401,7 @@ export default function LibraryPage() {
                       </div>
                     )}
                   </div>
-                ) : (
-                  <p className="text-sm text-muted-foreground pt-2">
-                    No data quality issues found
-                  </p>
-                )}
+                ) : null}
               </CollapsibleContent>
             </Collapsible>
           </>

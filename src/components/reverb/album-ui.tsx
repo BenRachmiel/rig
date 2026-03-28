@@ -4,6 +4,7 @@ import { useRef, useEffect, useCallback, useState } from "react";
 import { Play, Pause, SkipBack, SkipForward } from "lucide-react";
 import { useSwipeable } from "react-swipeable";
 import { Oscilloscope } from "./waveform";
+import { formatTime } from "@/lib/utils";
 import type { AlbumWithSongsID3 } from "@/types/api";
 
 interface AlbumUIProps {
@@ -16,12 +17,6 @@ interface AlbumUIProps {
   onNextTrack: () => void;
   onPrevTrack: () => void;
   analyserNode: AnalyserNode | null;
-}
-
-function formatTime(seconds: number): string {
-  const m = Math.floor(seconds / 60);
-  const s = Math.floor(seconds % 60);
-  return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
 export function AlbumUI({

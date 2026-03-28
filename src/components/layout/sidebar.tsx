@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Download, Library, Headphones, KeyRound, ChevronUp } from "lucide-react";
@@ -14,10 +14,23 @@ const nav = [
   { href: "/credentials", label: "Keys", icon: KeyRound },
 ] as const;
 
+const NAV_SEEN_KEY = "rig:nav-seen";
+
 export function Sidebar() {
   const pathname = usePathname();
   const isMobile = useMediaQuery("(max-width: 860px)");
   const [revealed, setRevealed] = useState(false);
+  const [bounce, setBounce] = useState(false);
+
+  // Bounce the pull tab on first visit
+  useEffect(() => {
+    if (!isMobile) return;
+    if (sessionStorage.getItem(NAV_SEEN_KEY)) return;
+    setBounce(true);
+    sessionStorage.setItem(NAV_SEEN_KEY, "1");
+    const t = setTimeout(() => setBounce(false), 2000);
+    return () => clearTimeout(t);
+  }, [isMobile]);
 
   if (isMobile) {
     return (
@@ -26,9 +39,12 @@ export function Sidebar() {
         {!revealed && (
           <button
             onClick={() => setRevealed(true)}
-            className="fixed bottom-0 left-0 right-0 z-30 h-6 flex items-center justify-center"
+            className={cn(
+              "fixed bottom-0 left-0 right-0 z-30 h-8 flex items-center justify-center",
+              bounce && "animate-bounce",
+            )}
           >
-            <ChevronUp className="size-3 opacity-15" />
+            <ChevronUp className="size-3.5 opacity-30" />
           </button>
         )}
         {/* Dismiss overlay — tap anywhere above nav to hide */}

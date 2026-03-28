@@ -3,8 +3,7 @@
 import { useEffect, useState } from "react";
 import { use } from "react";
 import Link from "next/link";
-import { ChevronLeft } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { ChevronRight } from "lucide-react";
 import * as libraryApi from "@/lib/library-api";
 import type { LibraryEntry } from "@/types/api";
 
@@ -25,20 +24,17 @@ export default function ArtistPage({
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-4 md:px-6 md:py-6 flex flex-col gap-6">
-      <div className="flex items-center gap-2">
-        <Link href="/library">
-          <Button variant="ghost" size="icon" className="h-8 w-8">
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
-        </Link>
-        <div>
-          <h1 className="text-xl font-semibold tracking-tight">
-            {artistName}
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            {albums.length} album{albums.length !== 1 ? "s" : ""}
-          </p>
-        </div>
+      <div className="space-y-1">
+        <nav className="flex items-center gap-1 text-sm text-muted-foreground">
+          <Link href="/library" className="hover:text-foreground transition-colors">
+            Library
+          </Link>
+          <ChevronRight className="h-3 w-3" />
+          <span className="text-foreground">{artistName}</span>
+        </nav>
+        <p className="text-xs text-muted-foreground">
+          {albums.length} album{albums.length !== 1 ? "s" : ""}
+        </p>
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">

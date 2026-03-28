@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { use } from "react";
 import Link from "next/link";
-import { ChevronLeft, Save, Image, Upload, Search } from "lucide-react";
+import { ChevronRight, Save, Image, Upload, Search } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -220,18 +220,21 @@ export default function AlbumPage({
   return (
     <div className="max-w-6xl mx-auto px-4 py-4 md:px-6 md:py-6 flex flex-col gap-4">
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Link href={`/library/${encodeURIComponent(artistName)}`}>
-            <Button variant="ghost" size="icon" className="h-8 w-8">
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-          </Link>
-          <div>
-            <h1 className="text-xl font-semibold tracking-tight">
-              {albumName}
-            </h1>
-            <p className="text-sm text-muted-foreground">{artistName}</p>
-          </div>
+        <div className="space-y-1">
+          <nav className="flex items-center gap-1 text-sm text-muted-foreground">
+            <Link href="/library" className="hover:text-foreground transition-colors">
+              Library
+            </Link>
+            <ChevronRight className="h-3 w-3" />
+            <Link
+              href={`/library/${encodeURIComponent(artistName)}`}
+              className="hover:text-foreground transition-colors"
+            >
+              {artistName}
+            </Link>
+            <ChevronRight className="h-3 w-3" />
+            <span className="text-foreground">{albumName}</span>
+          </nav>
         </div>
         {dirtyCount > 0 && (
           <Button onClick={saveAll} size="sm">

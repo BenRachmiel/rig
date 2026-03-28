@@ -29,6 +29,7 @@ export type ReverbAction =
   | { type: "TRACK_CHANGE"; index: number }
   | { type: "REVEAL" }
   | { type: "RESTART" }
+  | { type: "RESTORE"; album: AlbumWithSongsID3; trackIndex: number }
   | { type: "ERROR"; message: string };
 
 export const CLIP_DURATION = 30;
@@ -57,7 +58,7 @@ export const initialState: ReverbState = {
   error: null,
 };
 
-const REFILL_THRESHOLD = 3;
+const REFILL_THRESHOLD = 5;
 
 export function reverbReducer(state: ReverbState, action: ReverbAction): ReverbState {
   switch (action.type) {
@@ -125,6 +126,15 @@ export function reverbReducer(state: ReverbState, action: ReverbAction): ReverbS
     case "REVEAL": {
       if (state.phase !== "album") return state;
       return { ...state, phase: "reveal" };
+    }
+
+    case "RESTORE": {
+      return {
+        ...initialState,
+        phase: "album",
+        album: action.album,
+        albumTrackIndex: action.trackIndex,
+      };
     }
 
     case "RESTART": {
