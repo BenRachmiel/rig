@@ -2,7 +2,7 @@
 
 import { useRef, useEffect } from "react";
 
-const POINTS_PER_ROW = 100;
+const POINTS_PER_ROW = 200;
 const CAPTURE_INTERVAL_MS = 100;
 const LIFETIME_MS = 5000;
 const SPAWN_Y_FRAC = 0.85;
@@ -213,9 +213,10 @@ export function Oscilloscope({ analyserNode, isPlaying, progress, generation, ac
         }
       }
 
-      // Draw drifting rows
+      // Draw drifting rows (back-to-front: oldest first, newest last)
       const travel = h * TRAVEL_FRAC;
       const len = allRows.length;
+      ctx.fillStyle = "rgb(0,0,0)";
 
       for (let r = newHead; r < len; r++) {
         const { points, birth } = allRows[r];
@@ -227,6 +228,19 @@ export function Oscilloscope({ analyserNode, isPlaying, progress, generation, ac
 
         const y = spawnY - age * travel;
 
+        // Fill closed path to occlude older rows
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        for (let i = 0; i < POINTS_PER_ROW; i++) {
+          ctx.lineTo(i * sliceW, y - points[i] * ENVELOPE[i] * AMPLITUDE);
+        }
+        ctx.lineTo((POINTS_PER_ROW - 1) * sliceW, h);
+        ctx.lineTo(0, h);
+        ctx.closePath();
+        ctx.globalAlpha = fadeRef.current;
+        ctx.fill();
+
+        // Stroke waveform curve only (no closing edges)
         ctx.beginPath();
         for (let i = 0; i < POINTS_PER_ROW; i++) {
           const px = i * sliceW;
@@ -250,6 +264,19 @@ export function Oscilloscope({ analyserNode, isPlaying, progress, generation, ac
       // Draw live line at spawn point
       if (hasLive) {
         const live = livePoints.current;
+        // Fill closed path to occlude rows behind live line
+        ctx.beginPath();
+        ctx.moveTo(0, spawnY);
+        for (let i = 0; i < POINTS_PER_ROW; i++) {
+          ctx.lineTo(i * sliceW, spawnY - live[i] * ENVELOPE[i] * AMPLITUDE);
+        }
+        ctx.lineTo((POINTS_PER_ROW - 1) * sliceW, h);
+        ctx.lineTo(0, h);
+        ctx.closePath();
+        ctx.globalAlpha = fadeRef.current;
+        ctx.fill();
+
+        // Stroke live waveform curve only
         ctx.beginPath();
         for (let i = 0; i < POINTS_PER_ROW; i++) {
           const px = i * sliceW;
