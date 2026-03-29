@@ -257,17 +257,9 @@ export function AlbumUI({
         </div>
       </div>
 
-      {/* Drawer expand/collapse hint */}
-      <button
-        onClick={() => setExpanded(!expanded)}
-        className="py-2 opacity-20 hover:opacity-40 transition-opacity"
-      >
-        {expanded ? <ChevronDown className="size-4" /> : <ChevronUp className="size-4" />}
-      </button>
-
       {/* Lyrics (always rendered when expanded for stable layout) */}
       {expanded && (
-        <div className="w-full max-h-[40dvh] overflow-y-auto animate-in fade-in duration-300">
+        <div className="w-full max-h-[40dvh] animate-in fade-in duration-300">
           {songId && (
             <SyncedLyrics
               songId={songId}
@@ -277,6 +269,14 @@ export function AlbumUI({
           )}
         </div>
       )}
+
+      {/* Drawer expand/collapse hint */}
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="py-2 opacity-20 hover:opacity-40 transition-opacity"
+      >
+        {expanded ? <ChevronDown className="size-4" /> : <ChevronUp className="size-4" />}
+      </button>
     </div>
   );
 }
