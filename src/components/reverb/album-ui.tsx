@@ -265,14 +265,16 @@ export function AlbumUI({
         {expanded ? <ChevronDown className="size-4" /> : <ChevronUp className="size-4" />}
       </button>
 
-      {/* Lyrics (only when expanded and lyrics available) */}
-      {songId && expanded && (
+      {/* Lyrics (always rendered when expanded for stable layout) */}
+      {expanded && (
         <div className="w-full max-h-[40dvh] overflow-y-auto animate-in fade-in duration-300">
-          <SyncedLyrics
-            songId={songId}
-            progress={progress}
-            duration={currentSong?.duration ?? 0}
-          />
+          {songId && (
+            <SyncedLyrics
+              songId={songId}
+              progress={progress}
+              duration={currentSong?.duration ?? 0}
+            />
+          )}
         </div>
       )}
     </div>

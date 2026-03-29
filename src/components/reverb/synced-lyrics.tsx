@@ -44,21 +44,11 @@ export function SyncedLyrics({ songId, progress, duration }: SyncedLyricsProps) 
     });
   });
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center py-8">
-        <div className="size-1 rounded-full bg-white/20 animate-pulse" />
-      </div>
-    );
-  }
-
-  if (!lyrics || lyrics.line.length === 0) return null;
-
   const currentMs = progress * duration * 1000;
 
   // Find active line index for synced lyrics
   let activeIndex = -1;
-  if (lyrics.synced) {
+  if (lyrics?.synced) {
     for (let i = lyrics.line.length - 1; i >= 0; i--) {
       if (lyrics.line[i].start !== undefined && lyrics.line[i].start! <= currentMs) {
         activeIndex = i;
@@ -69,25 +59,31 @@ export function SyncedLyrics({ songId, progress, duration }: SyncedLyricsProps) 
 
   return (
     <div ref={containerRef} className="flex-1 overflow-y-auto min-h-0 px-2 py-4 space-y-3">
-      {lyrics.line.map((line, i) => {
-        if (!line.value.trim()) return <div key={i} className="h-4" />;
-        const isActive = lyrics.synced ? i === activeIndex : false;
-        return (
-          <div
-            key={i}
-            ref={isActive ? activeRef : undefined}
-            className={`text-sm text-center transition-all duration-300 ${
-              isActive
-                ? "text-white/90 scale-[1.02]"
-                : lyrics.synced
-                  ? "text-white/30"
-                  : "text-white/50"
-            }`}
-          >
-            {line.value}
-          </div>
-        );
-      })}
+      {loading && (
+        <div className="flex items-center justify-center py-8">
+          <div className="size-1 rounded-full bg-white/20 animate-pulse" />
+        </div>
+      )}
+      {!loading && lyrics && lyrics.line.length > 0 &&
+        lyrics.line.map((line, i) => {
+          if (!line.value.trim()) return <div key={i} className="h-4" />;
+          const isActive = lyrics.synced ? i === activeIndex : false;
+          return (
+            <div
+              key={i}
+              ref={isActive ? activeRef : undefined}
+              className={`text-sm text-center transition-all duration-300 ${
+                isActive
+                  ? "text-white/90 scale-[1.02]"
+                  : lyrics.synced
+                    ? "text-white/30"
+                    : "text-white/50"
+              }`}
+            >
+              {line.value}
+            </div>
+          );
+        })}
     </div>
   );
 }

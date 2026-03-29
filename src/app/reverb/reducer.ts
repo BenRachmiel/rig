@@ -31,6 +31,7 @@ export type ReverbAction =
   | { type: "RESTART" }
   | { type: "RESTORE"; album: AlbumWithSongsID3; trackIndex: number }
   | { type: "ABANDON_ALBUM" }
+  | { type: "DIRECT_ALBUM_LOADING" }
   | { type: "DIRECT_ALBUM"; album: AlbumWithSongsID3 }
   | { type: "ERROR"; message: string };
 
@@ -65,6 +66,10 @@ const REFILL_THRESHOLD = 5;
 export function reverbReducer(state: ReverbState, action: ReverbAction): ReverbState {
   switch (action.type) {
     case "POOL_LOADED": {
+      // Don't overwrite album/album_loading phases with clip view
+      if (state.phase === "album" || state.phase === "album_loading" || state.phase === "reveal") {
+        return state;
+      }
       const pool = [...state.pool, ...action.songs];
       if (pool.length === 0) {
         return { ...state, phase: "idle", error: "No songs found in library" };
@@ -153,6 +158,10 @@ export function reverbReducer(state: ReverbState, action: ReverbAction): ReverbS
         };
       }
       return { ...initialState, phase: "loading" };
+    }
+
+    case "DIRECT_ALBUM_LOADING": {
+      return { ...state, phase: "album_loading" };
     }
 
     case "DIRECT_ALBUM": {

@@ -241,13 +241,71 @@ describe("reverbReducer", () => {
     });
   });
 
+  describe("DIRECT_ALBUM_LOADING", () => {
+    it("sets phase to album_loading", () => {
+      const next = reverbReducer(initialState, { type: "DIRECT_ALBUM_LOADING" });
+      expect(next.phase).toBe("album_loading");
+    });
+
+    it("sets phase to album_loading from any phase", () => {
+      const songs = [fakeSong()];
+      const clipState = reverbReducer(initialState, { type: "POOL_LOADED", songs });
+      expect(clipState.phase).toBe("clip");
+
+      const next = reverbReducer(clipState, { type: "DIRECT_ALBUM_LOADING" });
+      expect(next.phase).toBe("album_loading");
+    });
+  });
+
+  describe("POOL_LOADED guards", () => {
+    it("is no-op when phase is album_loading", () => {
+      const state: ReverbState = { ...initialState, phase: "album_loading" };
+      const songs = [fakeSong()];
+      const next = reverbReducer(state, { type: "POOL_LOADED", songs });
+      expect(next).toBe(state);
+    });
+
+    it("is no-op when phase is album", () => {
+      const state: ReverbState = { ...initialState, phase: "album", album: fakeAlbum() };
+      const songs = [fakeSong()];
+      const next = reverbReducer(state, { type: "POOL_LOADED", songs });
+      expect(next).toBe(state);
+    });
+
+    it("is no-op when phase is reveal", () => {
+      const state: ReverbState = { ...initialState, phase: "reveal", album: fakeAlbum() };
+      const songs = [fakeSong()];
+      const next = reverbReducer(state, { type: "POOL_LOADED", songs });
+      expect(next).toBe(state);
+    });
+  });
+
   describe("DIRECT_ALBUM", () => {
-    it("transitions directly to album phase from any state", () => {
+    it("transitions directly to album phase from idle", () => {
       const album = fakeAlbum();
       const next = reverbReducer(initialState, { type: "DIRECT_ALBUM", album });
       expect(next.phase).toBe("album");
       expect(next.album).toBe(album);
       expect(next.albumTrackIndex).toBe(0);
+    });
+
+    it("transitions from album_loading to album", () => {
+      const state: ReverbState = { ...initialState, phase: "album_loading" };
+      const album = fakeAlbum();
+      const next = reverbReducer(state, { type: "DIRECT_ALBUM", album });
+      expect(next.phase).toBe("album");
+      expect(next.album).toBe(album);
+    });
+
+    it("resets pool state on direct album load", () => {
+      const songs = [fakeSong({ id: "s1" }), fakeSong({ id: "s2" })];
+      const clipState = reverbReducer(initialState, { type: "POOL_LOADED", songs });
+
+      const album = fakeAlbum();
+      const next = reverbReducer(clipState, { type: "DIRECT_ALBUM", album });
+      expect(next.phase).toBe("album");
+      expect(next.pool).toHaveLength(0);
+      expect(next.currentClip).toBeNull();
     });
   });
 

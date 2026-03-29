@@ -28,6 +28,7 @@ function ReverbPageInner() {
   const reactivityRef = useAudioReactivity(engine.analyserNode);
   const restoredRef = useRef(false);
   const directLoadRef = useRef(false);
+  const lastDirectParamsRef = useRef<string>("");
 
   // Register Reverb-specific callbacks on mount, restore album if active, clean up on unmount
   useEffect(() => {
@@ -51,11 +52,24 @@ function ReverbPageInner() {
 
   // Direct album load from URL params (?artist=...&album=...)
   useEffect(() => {
-    if (directLoadRef.current || restoredRef.current) return;
     const artist = searchParams.get("artist");
     const album = searchParams.get("album");
     if (!artist || !album) return;
+
+    // Deduplicate: skip if we already processed these exact params
+    const paramsKey = `${artist}\0${album}`;
+    if (paramsKey === lastDirectParamsRef.current) return;
+    lastDirectParamsRef.current = paramsKey;
+
+    // If something is already playing (restored or otherwise), stop it first
+    if (restoredRef.current || state.phase === "album" || state.phase === "clip") {
+      engine.stop();
+      usePlaybackStore.getState().clearPlayback();
+      restoredRef.current = false;
+    }
+
     directLoadRef.current = true;
+    dispatch({ type: "DIRECT_ALBUM_LOADING" });
     reverbApi
       .searchAlbum(artist, album)
       .then((found) => {
@@ -66,7 +80,7 @@ function ReverbPageInner() {
         dispatch({ type: "ERROR", message: e instanceof Error ? e.message : "Search failed" }),
       );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [searchParams]);
 
   // Fetch pool
   const fetchPool = useCallback(async () => {
@@ -111,7 +125,8 @@ function ReverbPageInner() {
   }, [state.currentClip]);
 
   useEffect(() => {
-    if (state.phase !== "album_loading" || !state.currentClip) return;
+    // Direct loads fetch via searchAlbum, not via currentClip.albumId
+    if (state.phase !== "album_loading" || !state.currentClip || directLoadRef.current) return;
     const albumId = state.currentClip.song.albumId;
     reverbApi
       .getAlbum(albumId)
@@ -129,6 +144,7 @@ function ReverbPageInner() {
       restoredRef.current = false;
       return;
     }
+    directLoadRef.current = false;
     engine.playAlbum(state.album.song, 0);
 
     usePlaybackStore.getState().startPlayback(
