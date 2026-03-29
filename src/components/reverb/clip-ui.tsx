@@ -9,6 +9,7 @@ import { formatTime } from "@/lib/utils";
 
 interface ClipUIProps {
   isPlaying: boolean;
+  isBuffering?: boolean;
   progress: number;
   onSkip: () => void;
   onBack: () => void;
@@ -27,6 +28,7 @@ function haptic() {
 
 export function ClipUI({
   isPlaying,
+  isBuffering,
   progress,
   onSkip,
   onBack,
@@ -179,15 +181,17 @@ export function ClipUI({
 
       {/* Controls */}
       <div className="flex flex-col items-center gap-6 pt-6 shrink-0">
-        <span className="text-xs tabular-nums tracking-wider opacity-30">
-          {formatTime(elapsed)} / {formatTime(CLIP_DURATION)}
+        <span className={`text-xs tabular-nums tracking-wider opacity-30${isBuffering ? " animate-pulse" : ""}`}>
+          {isBuffering ? "buffering" : `${formatTime(elapsed)} / ${formatTime(CLIP_DURATION)}`}
         </span>
 
         <button
           onClick={onPauseToggle}
-          className="size-16 rounded-full flex items-center justify-center transition-colors"
+          className={`size-16 rounded-full flex items-center justify-center transition-colors${isBuffering ? " animate-pulse" : ""}`}
           style={{
-            border: "1px solid oklch(1 0 0 / calc(0.1 + var(--rv-peak) * 0.15))",
+            border: isBuffering
+              ? "1px solid oklch(1 0 0 / 0.3)"
+              : "1px solid oklch(1 0 0 / calc(0.1 + var(--rv-peak) * 0.15))",
           }}
         >
           {isPlaying ? (

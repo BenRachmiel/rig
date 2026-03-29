@@ -281,6 +281,7 @@ function ReverbPageInner() {
           <div className="w-full animate-in fade-in slide-in-from-bottom-2 duration-500">
             <ClipUI
               isPlaying={engine.isPlaying}
+              isBuffering={engine.isBuffering}
               progress={engine.progress}
               onSkip={handleSkip}
               onBack={handleBack}

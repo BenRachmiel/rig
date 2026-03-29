@@ -2,8 +2,33 @@ import { PREAMP_ADMIN_URL, PREAMP_URL } from "@/lib/env";
 
 let cachedApiKey: string | null = null;
 
+async function cleanupStaleCredentials(): Promise<void> {
+  const res = await fetch(`${PREAMP_ADMIN_URL}/admin/credentials`, {
+    headers: { "remote-user": "rig" },
+  });
+  if (!res.ok) return;
+
+  const creds = (await res.json()) as { id: string; client_name: string }[];
+  await Promise.allSettled(
+    creds
+      .filter((c) => c.client_name === "rig-reverb")
+      .map((c) =>
+        fetch(`${PREAMP_ADMIN_URL}/admin/credentials/${c.id}`, {
+          method: "DELETE",
+          headers: { "remote-user": "rig" },
+        }),
+      ),
+  );
+}
+
 async function mintApiKey(): Promise<string> {
   if (cachedApiKey) return cachedApiKey;
+
+  try {
+    await cleanupStaleCredentials();
+  } catch {
+    // Best-effort cleanup — proceed to mint regardless.
+  }
 
   const res = await fetch(`${PREAMP_ADMIN_URL}/admin/credentials`, {
     method: "POST",

@@ -16,9 +16,19 @@ async function loadRoute() {
   return import("./route");
 }
 
+/** Returns a Response with an empty JSON array (no existing credentials). */
+function emptyCredsResponse() {
+  return new Response(JSON.stringify([]), {
+    status: 200,
+    headers: { "content-type": "application/json" },
+  });
+}
+
 describe("Reverb proxy route", () => {
   it("auto-mints credential on first request", async () => {
     const mockFetch = vi.fn()
+      // Cleanup list
+      .mockResolvedValueOnce(emptyCredsResponse())
       // Mint call
       .mockResolvedValueOnce(
         new Response(JSON.stringify({ secret: "test-api-key-123" }), {
@@ -39,9 +49,15 @@ describe("Reverb proxy route", () => {
     const req = nextRequest("http://localhost/api/reverb/getRandomSongs?size=20");
     await GET(req, { params: Promise.resolve({ path: ["getRandomSongs"] }) });
 
+    expect(mockFetch).toHaveBeenCalledTimes(3);
+
+    // Verify cleanup list call
+    const listCall = mockFetch.mock.calls[0];
+    expect(listCall[0]).toBe("http://preamp-admin:4534/admin/credentials");
+    expect(listCall[1].headers["remote-user"]).toBe("rig");
+
     // Verify mint call
-    expect(mockFetch).toHaveBeenCalledTimes(2);
-    const mintCall = mockFetch.mock.calls[0];
+    const mintCall = mockFetch.mock.calls[1];
     expect(mintCall[0]).toBe("http://preamp-admin:4534/admin/credentials");
     expect(mintCall[1].method).toBe("POST");
     expect(mintCall[1].headers["remote-user"]).toBe("rig");
@@ -53,6 +69,7 @@ describe("Reverb proxy route", () => {
 
   it("injects apiKey and f=json into proxied request", async () => {
     const mockFetch = vi.fn()
+      .mockResolvedValueOnce(emptyCredsResponse())
       .mockResolvedValueOnce(
         new Response(JSON.stringify({ secret: "key-abc" }), {
           status: 200,
@@ -71,7 +88,7 @@ describe("Reverb proxy route", () => {
     const req = nextRequest("http://localhost/api/reverb/getAlbum?id=42");
     await GET(req, { params: Promise.resolve({ path: ["getAlbum"] }) });
 
-    const proxyCall = mockFetch.mock.calls[1];
+    const proxyCall = mockFetch.mock.calls[2];
     const proxyUrl = new URL(proxyCall[0]);
     expect(proxyUrl.origin).toBe("http://preamp:4533");
     expect(proxyUrl.pathname).toBe("/rest/getAlbum");
@@ -82,6 +99,7 @@ describe("Reverb proxy route", () => {
 
   it("forwards Range headers", async () => {
     const mockFetch = vi.fn()
+      .mockResolvedValueOnce(emptyCredsResponse())
       .mockResolvedValueOnce(
         new Response(JSON.stringify({ secret: "key-range" }), {
           status: 200,
@@ -108,11 +126,11 @@ describe("Reverb proxy route", () => {
     const res = await GET(req, { params: Promise.resolve({ path: ["stream"] }) });
 
     // Verify Range was forwarded upstream
-    const upstreamHeaders = mockFetch.mock.calls[1][1].headers;
+    const upstreamHeaders = mockFetch.mock.calls[2][1].headers;
     expect(upstreamHeaders.get("range")).toBe("bytes=0-1023");
 
     // Binary endpoints should not have f=json
-    const proxyUrl = new URL(mockFetch.mock.calls[1][0]);
+    const proxyUrl = new URL(mockFetch.mock.calls[2][0]);
     expect(proxyUrl.searchParams.has("f")).toBe(false);
 
     // Verify response headers forwarded back
@@ -123,9 +141,11 @@ describe("Reverb proxy route", () => {
   });
 
   it("returns 502 on mint failure", async () => {
-    const mockFetch = vi.fn().mockResolvedValueOnce(
-      new Response("internal error", { status: 500 }),
-    );
+    const mockFetch = vi.fn()
+      .mockResolvedValueOnce(emptyCredsResponse())
+      .mockResolvedValueOnce(
+        new Response("internal error", { status: 500 }),
+      );
     vi.stubGlobal("fetch", mockFetch);
 
     const { GET } = await loadRoute();
@@ -135,5 +155,85 @@ describe("Reverb proxy route", () => {
     expect(res.status).toBe(502);
     const body = await res.json();
     expect(body.error).toContain("Failed to mint");
+  });
+
+  it("cleans up stale rig-reverb credentials before minting", async () => {
+    const mockFetch = vi.fn()
+      // Cleanup list — 2 rig-reverb + 1 other
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify([
+            { id: "cred-1", client_name: "rig-reverb" },
+            { id: "cred-2", client_name: "rig-reverb" },
+            { id: "cred-3", client_name: "other-client" },
+          ]),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+      )
+      // DELETE cred-1
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+      // DELETE cred-2
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+      // Mint
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ secret: "fresh-key" }), {
+          status: 201,
+          headers: { "content-type": "application/json" },
+        }),
+      )
+      // Proxy
+      .mockResolvedValueOnce(
+        new Response("{}", {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      );
+    vi.stubGlobal("fetch", mockFetch);
+
+    const { GET } = await loadRoute();
+    const req = nextRequest("http://localhost/api/reverb/ping");
+    await GET(req, { params: Promise.resolve({ path: ["ping"] }) });
+
+    // List call
+    expect(mockFetch.mock.calls[0][0]).toBe("http://preamp-admin:4534/admin/credentials");
+
+    // Only rig-reverb credentials deleted (cred-1, cred-2), not cred-3
+    const deleteCalls = mockFetch.mock.calls.filter(
+      ([, opts]) => opts?.method === "DELETE",
+    );
+    expect(deleteCalls).toHaveLength(2);
+    expect(deleteCalls[0][0]).toBe("http://preamp-admin:4534/admin/credentials/cred-1");
+    expect(deleteCalls[1][0]).toBe("http://preamp-admin:4534/admin/credentials/cred-2");
+  });
+
+  it("proceeds with mint even if cleanup fails", async () => {
+    const mockFetch = vi.fn()
+      // Cleanup list returns 500
+      .mockResolvedValueOnce(new Response("error", { status: 500 }))
+      // Mint still proceeds
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ secret: "key-despite-failure" }), {
+          status: 201,
+          headers: { "content-type": "application/json" },
+        }),
+      )
+      // Proxy
+      .mockResolvedValueOnce(
+        new Response("{}", {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      );
+    vi.stubGlobal("fetch", mockFetch);
+
+    const { GET } = await loadRoute();
+    const req = nextRequest("http://localhost/api/reverb/ping");
+    const res = await GET(req, { params: Promise.resolve({ path: ["ping"] }) });
+
+    expect(res.status).toBe(200);
+    // Mint still happened despite cleanup failure
+    const mintCall = mockFetch.mock.calls[1];
+    expect(mintCall[0]).toBe("http://preamp-admin:4534/admin/credentials");
+    expect(mintCall[1].method).toBe("POST");
   });
 });
