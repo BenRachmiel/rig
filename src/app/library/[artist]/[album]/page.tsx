@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { use } from "react";
 import Link from "next/link";
-import { ChevronRight, Save, Image, Upload, Search } from "lucide-react";
+import { ChevronRight, Save, Image, Upload, Search, Headphones } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -281,6 +281,12 @@ export default function AlbumPage({
             <Upload className="h-3.5 w-3.5 mr-1.5" />
             {uploading ? "Uploading..." : "Upload cover"}
           </Button>
+          <Link href={`/reverb?artist=${encodeURIComponent(artistName)}&album=${encodeURIComponent(albumName)}`}>
+            <Button variant="outline" size="sm">
+              <Headphones className="h-3.5 w-3.5 mr-1.5" />
+              Listen in Reverb
+            </Button>
+          </Link>
         </div>
       </div>
 

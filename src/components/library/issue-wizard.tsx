@@ -313,12 +313,10 @@ export function IssueWizard({
       const newArtist = artist.trim();
       for (const song of currentGroup.songs) {
         await libraryApi.writeTags(song.path, { artist: newArtist });
-        // Extract album dir from the actual path, not song.album metadata
-        // Path structure: artist/album/file.mp3
+        // Replace only the first segment (artist dir) in the existing path
         const parts = song.path.split("/");
-        const filename = parts.pop()!;
-        const albumDir = parts.pop() || song.album;
-        const newPath = `${safePathSegment(newArtist)}/${albumDir}/${filename}`;
+        parts[0] = safePathSegment(newArtist);
+        const newPath = parts.join("/");
         if (newPath !== song.path) {
           await libraryApi.moveEntry(song.path, newPath);
         }

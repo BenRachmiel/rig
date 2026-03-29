@@ -40,9 +40,11 @@ interface OscilloscopeProps {
   isPlaying: boolean;
   progress?: number;
   generation?: number;
+  /** When false, stops capturing new rows but keeps rendering existing ones. */
+  active?: boolean;
 }
 
-export function Oscilloscope({ analyserNode, isPlaying, progress, generation }: OscilloscopeProps) {
+export function Oscilloscope({ analyserNode, isPlaying, progress, generation, active = true }: OscilloscopeProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rafRef = useRef<number | null>(null);
   const analyserRef = useRef(analyserNode);
@@ -67,9 +69,11 @@ export function Oscilloscope({ analyserNode, isPlaying, progress, generation }: 
     prog: -1, w: 0, grad: null,
   });
 
+  const activeGateRef = useRef(active);
   analyserRef.current = analyserNode;
   isPlayingRef.current = isPlaying;
   progressRef.current = progress;
+  activeGateRef.current = active;
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -167,8 +171,8 @@ export function Oscilloscope({ analyserNode, isPlaying, progress, generation }: 
         }
         hasLive = true;
 
-        // Capture snapshot at throttled rate
-        if (now - lastCapture.current >= CAPTURE_INTERVAL_MS) {
+        // Capture row snapshots only when active (not paused by drawer expand)
+        if (activeGateRef.current && now - lastCapture.current >= CAPTURE_INTERVAL_MS) {
           lastCapture.current = now;
           rows.current.push({ points: new Float32Array(live), birth: now });
         }

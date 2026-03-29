@@ -12,6 +12,12 @@ oauthProxy:
   redirectURL: ""
   cookieName: _oauth2_proxy_rig
   extraArgs: []
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      memory: 64Mi
 
 resources:
   requests:

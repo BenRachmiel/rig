@@ -209,6 +209,48 @@ describe("reverbReducer", () => {
     });
   });
 
+  describe("ABANDON_ALBUM", () => {
+    it("returns to clip mode when pool has songs", () => {
+      const songs = [fakeSong({ id: "s1" }), fakeSong({ id: "s2" })];
+      let state = reverbReducer(initialState, { type: "POOL_LOADED", songs });
+      state = reverbReducer(state, { type: "COMMIT" });
+      state = reverbReducer(state, { type: "ALBUM_LOADED", album: fakeAlbum() });
+      expect(state.phase).toBe("album");
+
+      const next = reverbReducer(state, { type: "ABANDON_ALBUM" });
+      expect(next.phase).toBe("clip");
+      expect(next.currentClip).toBeTruthy();
+      expect(next.album).toBeNull();
+    });
+
+    it("restarts when pool is empty", () => {
+      const state: ReverbState = {
+        ...initialState,
+        phase: "album",
+        album: fakeAlbum(),
+        pool: [],
+        poolIndex: 0,
+      };
+      const next = reverbReducer(state, { type: "ABANDON_ALBUM" });
+      expect(next.phase).toBe("loading");
+    });
+
+    it("is no-op outside album/reveal phase", () => {
+      const state = { ...initialState, phase: "clip" as const };
+      expect(reverbReducer(state, { type: "ABANDON_ALBUM" })).toBe(state);
+    });
+  });
+
+  describe("DIRECT_ALBUM", () => {
+    it("transitions directly to album phase from any state", () => {
+      const album = fakeAlbum();
+      const next = reverbReducer(initialState, { type: "DIRECT_ALBUM", album });
+      expect(next.phase).toBe("album");
+      expect(next.album).toBe(album);
+      expect(next.albumTrackIndex).toBe(0);
+    });
+  });
+
   describe("ERROR", () => {
     it("sets error message", () => {
       const next = reverbReducer(initialState, {

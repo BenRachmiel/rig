@@ -30,6 +30,8 @@ export type ReverbAction =
   | { type: "REVEAL" }
   | { type: "RESTART" }
   | { type: "RESTORE"; album: AlbumWithSongsID3; trackIndex: number }
+  | { type: "ABANDON_ALBUM" }
+  | { type: "DIRECT_ALBUM"; album: AlbumWithSongsID3 }
   | { type: "ERROR"; message: string };
 
 export const CLIP_DURATION = 30;
@@ -134,6 +136,31 @@ export function reverbReducer(state: ReverbState, action: ReverbAction): ReverbS
         phase: "album",
         album: action.album,
         albumTrackIndex: action.trackIndex,
+      };
+    }
+
+    case "ABANDON_ALBUM": {
+      if (state.phase !== "album" && state.phase !== "reveal") return state;
+      // Return to clip mode if we have pool songs, otherwise restart
+      if (state.pool.length > 0 && state.poolIndex < state.pool.length) {
+        const clip = makeClip(state.pool[state.poolIndex]);
+        return {
+          ...state,
+          phase: "clip",
+          currentClip: clip,
+          album: null,
+          albumTrackIndex: 0,
+        };
+      }
+      return { ...initialState, phase: "loading" };
+    }
+
+    case "DIRECT_ALBUM": {
+      return {
+        ...initialState,
+        phase: "album",
+        album: action.album,
+        albumTrackIndex: 0,
       };
     }
 

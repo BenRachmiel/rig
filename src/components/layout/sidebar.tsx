@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { Download, Library, Headphones, KeyRound, ChevronUp } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useMediaQuery } from "@/hooks/use-media-query";
+import { useNavStore } from "@/stores/nav-store";
 
 const nav = [
   { href: "/download", label: "Download", icon: Download },
@@ -19,7 +20,13 @@ const NAV_SEEN_KEY = "rig:nav-seen";
 export function Sidebar() {
   const pathname = usePathname();
   const isMobile = useMediaQuery("(max-width: 860px)");
-  const [revealed, setRevealed] = useState(false);
+  const [localRevealed, setLocalRevealed] = useState(false);
+  const externalRevealed = useNavStore((s) => s.mobileNavRevealed);
+  const revealed = localRevealed || externalRevealed;
+  const setRevealed = (v: boolean) => {
+    setLocalRevealed(v);
+    if (!v) useNavStore.getState().hideMobileNav();
+  };
   const [bounce, setBounce] = useState(false);
 
   // Bounce the pull tab on first visit
@@ -32,11 +39,13 @@ export function Sidebar() {
     return () => clearTimeout(t);
   }, [isMobile]);
 
+  const isReverb = pathname.startsWith("/reverb");
+
   if (isMobile) {
     return (
       <>
-        {/* Pull tab — when nav is hidden */}
-        {!revealed && (
+        {/* Pull tab — when nav is hidden (hidden on Reverb which has its own) */}
+        {!revealed && !isReverb && (
           <button
             onClick={() => setRevealed(true)}
             className={cn(

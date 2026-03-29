@@ -25,7 +25,7 @@ function waitForLoad(el: HTMLAudioElement, url: string, timeoutMs = LOAD_TIMEOUT
   return new Promise<void>((resolve, reject) => {
     const cleanup = () => {
       clearTimeout(timer);
-      el.removeEventListener("loadedmetadata", onLoad);
+      el.removeEventListener("canplay", onLoad);
       el.removeEventListener("error", onError);
     };
     const onLoad = () => { cleanup(); resolve(); };
@@ -44,7 +44,7 @@ function waitForLoad(el: HTMLAudioElement, url: string, timeoutMs = LOAD_TIMEOUT
       cleanup();
       reject(new Error(`Audio load timed out after ${timeoutMs}ms`));
     }, timeoutMs);
-    el.addEventListener("loadedmetadata", onLoad, { once: true });
+    el.addEventListener("canplay", onLoad, { once: true });
     el.addEventListener("error", onError, { once: true });
     el.src = url;
   });
@@ -259,7 +259,7 @@ export function useAudioEngine(callbacks: AudioEngineCallbacks) {
           const now = ctx.currentTime;
           oldGain.gain.cancelScheduledValues(now);
           oldGain.gain.setValueAtTime(oldGain.gain.value, now);
-          oldGain.gain.linearRampToValueAtTime(0, now + TAPER_MS / 1000);
+          oldGain.gain.exponentialRampToValueAtTime(0.001, now + TAPER_MS / 1000);
         }
         const oldEl = getActive();
         // Stop old element after taper
@@ -299,8 +299,8 @@ export function useAudioEngine(callbacks: AudioEngineCallbacks) {
       if (inGain) {
         const now = ctx.currentTime;
         inGain.gain.cancelScheduledValues(now);
-        inGain.gain.setValueAtTime(0, now);
-        inGain.gain.linearRampToValueAtTime(1, now + TAPER_MS / 1000);
+        inGain.gain.setValueAtTime(0.001, now);
+        inGain.gain.exponentialRampToValueAtTime(1, now + TAPER_MS / 1000);
       }
 
       await el.play();

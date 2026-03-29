@@ -1,4 +1,4 @@
-import type { SongID3, AlbumWithSongsID3, SubsonicResponse } from "@/types/api";
+import type { SongID3, AlbumWithSongsID3, SubsonicResponse, StructuredLyric } from "@/types/api";
 
 const API = "/api/reverb";
 
@@ -31,5 +31,48 @@ export const reverbApi = {
 
   scrobble: (id: string): void => {
     fetch(`${API}/scrobble?id=${encodeURIComponent(id)}`).catch(() => {});
+  },
+
+  getLyrics: async (songId: string): Promise<StructuredLyric[]> => {
+    const data = await json<SubsonicResponse<{ lyricsList?: { structuredLyrics?: StructuredLyric[] } }>>(
+      `/getLyricsBySongId?id=${encodeURIComponent(songId)}`,
+    );
+    return data["subsonic-response"].lyricsList?.structuredLyrics ?? [];
+  },
+
+  star: async (songId: string): Promise<void> => {
+    await fetch(`${API}/star?id=${encodeURIComponent(songId)}`);
+  },
+
+  unstar: async (songId: string): Promise<void> => {
+    await fetch(`${API}/unstar?id=${encodeURIComponent(songId)}`);
+  },
+
+  setRating: async (songId: string, rating: number): Promise<void> => {
+    await fetch(`${API}/setRating?id=${encodeURIComponent(songId)}&rating=${rating}`);
+  },
+
+  getStarred: async (): Promise<SongID3[]> => {
+    const data = await json<SubsonicResponse<{ starred2?: { song?: SongID3[] } }>>(
+      `/getStarred2`,
+    );
+    return data["subsonic-response"].starred2?.song ?? [];
+  },
+
+  searchAlbum: async (artist: string, album: string): Promise<AlbumWithSongsID3 | null> => {
+    const query = encodeURIComponent(album);
+    const data = await json<SubsonicResponse<{ searchResult3?: { album?: AlbumWithSongsID3[] } }>>(
+      `/search3?query=${query}&artistCount=0&songCount=0&albumCount=10`,
+    );
+    const albums = data["subsonic-response"].searchResult3?.album ?? [];
+    const match = albums.find(
+      (a) => a.artist.toLowerCase() === artist.toLowerCase() && a.name.toLowerCase() === album.toLowerCase(),
+    ) ?? albums.find(
+      (a) => a.name.toLowerCase() === album.toLowerCase(),
+    ) ?? albums[0] ?? null;
+
+    if (!match) return null;
+    // Fetch full album with songs
+    return reverbApi.getAlbum(match.id);
   },
 };

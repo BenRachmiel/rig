@@ -1,6 +1,7 @@
 "use client";
 
-import { useReducer, useEffect, useCallback, useRef, useState } from "react";
+import { Suspense, useReducer, useEffect, useCallback, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { reverbReducer, initialState, makeClip } from "./reducer";
 import { usePlayback } from "@/contexts/playback-context";
 import { usePlaybackStore } from "@/stores/playback-store";
@@ -11,12 +12,22 @@ import { AlbumUI } from "@/components/reverb/album-ui";
 import { RevealUI } from "@/components/reverb/reveal-ui";
 
 export default function ReverbPage() {
+  return (
+    <Suspense>
+      <ReverbPageInner />
+    </Suspense>
+  );
+}
+
+function ReverbPageInner() {
   const [state, dispatch] = useReducer(reverbReducer, initialState);
   const fetchingRef = useRef(false);
 
+  const searchParams = useSearchParams();
   const engine = usePlayback();
   const reactivityRef = useAudioReactivity(engine.analyserNode);
   const restoredRef = useRef(false);
+  const directLoadRef = useRef(false);
 
   // Register Reverb-specific callbacks on mount, restore album if active, clean up on unmount
   useEffect(() => {
@@ -35,6 +46,25 @@ export default function ReverbPage() {
     }
 
     return () => engine.clearCallbacks();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Direct album load from URL params (?artist=...&album=...)
+  useEffect(() => {
+    if (directLoadRef.current || restoredRef.current) return;
+    const artist = searchParams.get("artist");
+    const album = searchParams.get("album");
+    if (!artist || !album) return;
+    directLoadRef.current = true;
+    reverbApi
+      .searchAlbum(artist, album)
+      .then((found) => {
+        if (found) dispatch({ type: "DIRECT_ALBUM", album: found });
+        else dispatch({ type: "ERROR", message: `Album "${album}" by "${artist}" not found` });
+      })
+      .catch((e) =>
+        dispatch({ type: "ERROR", message: e instanceof Error ? e.message : "Search failed" }),
+      );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -174,6 +204,11 @@ export default function ReverbPage() {
       img.src = coverUrl;
     }
   }, [engine, state.currentClip]);
+  const handleAbandon = useCallback(() => {
+    engine.stop();
+    usePlaybackStore.getState().clearPlayback();
+    dispatch({ type: "ABANDON_ALBUM" });
+  }, [engine]);
   const handleRestart = useCallback(() => dispatch({ type: "RESTART" }), []);
 
   const handleStart = handleRestart;
@@ -243,7 +278,7 @@ export default function ReverbPage() {
 
         {/* Album */}
         {state.phase === "album" && state.album && (
-          <div className="w-full animate-in fade-in slide-in-from-bottom-2 duration-500">
+          <div className="w-full flex-1 min-h-0 animate-in fade-in slide-in-from-bottom-2 duration-500">
             <AlbumUI
               album={state.album}
               currentTrackIndex={engine.albumTrackIndex}
@@ -253,6 +288,7 @@ export default function ReverbPage() {
               onTrackSelect={(i) => engine.playAlbumTrack(i)}
               onNextTrack={() => engine.playAlbumTrack(engine.albumTrackIndex + 1)}
               onPrevTrack={() => engine.playAlbumTrack(Math.max(0, engine.albumTrackIndex - 1))}
+              onAbandon={handleAbandon}
               analyserNode={engine.analyserNode}
             />
           </div>

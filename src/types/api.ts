@@ -147,6 +147,19 @@ export interface SongID3 {
   bitRate: number;
   contentType: string;
   coverArt: string;
+  starred?: string;
+  userRating?: number;
+}
+
+export interface StructuredLyric {
+  lang: string;
+  synced: boolean;
+  line: { start?: number; value: string }[];
+}
+
+export interface StarredResponse {
+  song?: SongID3[];
+  album?: AlbumWithSongsID3[];
 }
 
 export interface AlbumWithSongsID3 {

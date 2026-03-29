@@ -114,11 +114,10 @@ function SongIssueTable({
 
       // For artist changes, also move the file
       if (tags.artist && typeof tags.artist === "string" && tags.artist !== song.artist) {
-        // Extract album dir from the actual path, not song.album metadata
-        const pathParts = song.path.split("/");
-        const filename = pathParts.pop()!;
-        const albumDir = pathParts.pop() || song.album;
-        const newPath = `${safePathSegment(tags.artist as string)}/${albumDir}/${filename}`;
+        // Replace only the first segment (artist dir) in the existing path
+        const parts = song.path.split("/");
+        parts[0] = safePathSegment(tags.artist as string);
+        const newPath = parts.join("/");
         if (newPath !== song.path) {
           await libraryApi.moveEntry(song.path, newPath);
         }

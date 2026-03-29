@@ -17,13 +17,37 @@ vi.mock("music-metadata", () => ({
   parseFile: (...args: unknown[]) => mockParseFile(...args),
 }));
 
-const mockRead = vi.fn();
-const mockWrite = vi.fn();
+const mockCreate = vi.fn();
 vi.mock("node-id3", () => ({
-  default: {
-    read: (...args: unknown[]) => mockRead(...args),
-    write: (...args: unknown[]) => mockWrite(...args),
-  },
+  create: (...args: unknown[]) => mockCreate(...args),
+}));
+
+// Mock fs operations for PATCH streaming writes
+const mockOpen = vi.fn();
+const mockRename = vi.fn();
+const mockUnlink = vi.fn();
+const mockStat = vi.fn();
+const mockChmod = vi.fn();
+vi.mock("node:fs/promises", () => ({
+  open: (...args: unknown[]) => mockOpen(...args),
+  rename: (...args: unknown[]) => mockRename(...args),
+  unlink: (...args: unknown[]) => mockUnlink(...args),
+  stat: (...args: unknown[]) => mockStat(...args),
+  chmod: (...args: unknown[]) => mockChmod(...args),
+}));
+
+// Mock createReadStream / createWriteStream
+const mockWriteStream = {
+  write: vi.fn((_data: unknown, cb: (err?: Error | null) => void) => cb(null)),
+};
+const mockReadStream = {};
+vi.mock("node:fs", () => ({
+  createReadStream: () => mockReadStream,
+  createWriteStream: () => mockWriteStream,
+}));
+
+vi.mock("node:stream/promises", () => ({
+  pipeline: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response()));
@@ -126,11 +150,34 @@ describe("GET /api/library/tags", () => {
 describe("PATCH /api/library/tags", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Default: file has an ID3v2 header (10-byte header + 100 bytes tag body)
+    const headerBuf = Buffer.alloc(10);
+    headerBuf[0] = 0x49; // 'I'
+    headerBuf[1] = 0x44; // 'D'
+    headerBuf[2] = 0x33; // '3'
+    headerBuf[3] = 3; // version
+    headerBuf[4] = 0; // revision
+    headerBuf[5] = 0; // flags
+    // syncsafe encode 100: 0x00 0x00 0x00 0x64
+    headerBuf[6] = 0;
+    headerBuf[7] = 0;
+    headerBuf[8] = 0;
+    headerBuf[9] = 100;
+    mockOpen.mockResolvedValue({
+      read: vi.fn().mockResolvedValue({ bytesRead: 10, buffer: headerBuf }),
+      close: vi.fn().mockResolvedValue(undefined),
+    });
+    mockStat.mockResolvedValue({ mode: 0o100644 });
+    mockRename.mockResolvedValue(undefined);
+    mockChmod.mockResolvedValue(undefined);
   });
 
-  it("writes tags and returns ok", async () => {
-    mockRead.mockReturnValue({ title: "Old Title" });
-    mockWrite.mockReturnValue(true);
+  it("writes tags via streaming and returns ok", async () => {
+    mockParseFile.mockResolvedValue({
+      common: { title: "Old Title" },
+      format: {},
+    });
+    mockCreate.mockReturnValue(Buffer.from("ID3TAG"));
 
     const res = await PATCH(
       patchReq({ file: "track.mp3", tags: { title: "New Title", year: 2024 } }) as never,
@@ -139,10 +186,13 @@ describe("PATCH /api/library/tags", () => {
 
     expect(res.status).toBe(200);
     expect(body.ok).toBe(true);
-    expect(mockWrite).toHaveBeenCalledWith(
+    expect(mockCreate).toHaveBeenCalledWith(
       expect.objectContaining({ title: "New Title", year: "2024" }),
-      "/music/track.mp3",
     );
+    // Should write the tag buffer to the write stream
+    expect(mockWriteStream.write).toHaveBeenCalled();
+    // Should rename temp file over original
+    expect(mockRename).toHaveBeenCalled();
   });
 
   it("returns 400 when file or tags is missing", async () => {
@@ -157,9 +207,9 @@ describe("PATCH /api/library/tags", () => {
     expect(res.status).toBe(400);
   });
 
-  it("returns 500 when write fails", async () => {
-    mockRead.mockReturnValue({});
-    mockWrite.mockReturnValue(false);
+  it("returns 500 when create fails", async () => {
+    mockParseFile.mockResolvedValue({ common: {}, format: {} });
+    mockCreate.mockReturnValue("not a buffer");
 
     const res = await PATCH(
       patchReq({ file: "track.mp3", tags: { title: "x" } }) as never,
@@ -168,15 +218,18 @@ describe("PATCH /api/library/tags", () => {
   });
 
   it("orders text fields before binary fields", async () => {
-    mockRead.mockReturnValue({
-      image: { data: Buffer.from("img") },
-      title: "Old",
+    mockParseFile.mockResolvedValue({
+      common: {
+        title: "Old",
+        picture: [{ format: "image/jpeg", type: 3, description: "", data: Buffer.from("img") }],
+      },
+      format: {},
     });
-    mockWrite.mockReturnValue(true);
+    mockCreate.mockReturnValue(Buffer.from("ID3TAG"));
 
     await PATCH(patchReq({ file: "track.mp3", tags: { title: "New" } }) as never);
 
-    const writtenTags = mockWrite.mock.calls[0][0];
+    const writtenTags = mockCreate.mock.calls[0][0];
     const keys = Object.keys(writtenTags);
     const titleIdx = keys.indexOf("title");
     const imageIdx = keys.indexOf("image");
