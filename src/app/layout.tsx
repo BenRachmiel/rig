@@ -25,13 +25,10 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: [
-    { media: "(prefers-color-scheme: dark)", color: "#000000" },
-    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
-  ],
+  themeColor: "#000000",
   width: "device-width",
   initialScale: 1,
-  viewportFit: "cover",
+  viewportFit: "auto",
 };
 
 export default function RootLayout({
@@ -49,7 +46,7 @@ export default function RootLayout({
         {/* Synchronous theme script — runs before first paint to prevent FOUC */}
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{var s=JSON.parse(localStorage.getItem("rig:settings")||"{}").state;if(!s)return;var t=s.theme;if(t==="light"||(t==="system"&&window.matchMedia("(prefers-color-scheme:light)").matches)){document.documentElement.classList.remove("dark")}}catch(e){}})()`,
+            __html: `(function(){try{var s=JSON.parse(localStorage.getItem("rig:settings")||"{}").state;if(!s)return;var t=s.theme;var light=t==="light"||(t==="system"&&window.matchMedia("(prefers-color-scheme:light)").matches);if(light){document.documentElement.classList.remove("dark");var m=document.querySelector('meta[name=theme-color]');if(!m){m=document.createElement("meta");m.name="theme-color";document.head.appendChild(m)}m.setAttribute("content","#ffffff")}}catch(e){}})()`,
           }}
         />
       </head>

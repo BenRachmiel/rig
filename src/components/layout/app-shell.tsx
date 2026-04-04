@@ -19,13 +19,26 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const theme = useSettingsStore((s) => s.theme);
   useEffect(() => {
     const html = document.documentElement;
-    const metas = document.querySelectorAll('meta[name="theme-color"]');
-    const color = (dark: boolean) => dark ? "#000000" : "#ffffff";
+
+    const setThemeColor = (color: string) => {
+      // Update all existing theme-color meta tags
+      const metas = document.querySelectorAll('meta[name="theme-color"]');
+      if (metas.length > 0) {
+        metas.forEach((m) => {
+          m.removeAttribute("media");
+          m.setAttribute("content", color);
+        });
+      } else {
+        const m = document.createElement("meta");
+        m.name = "theme-color";
+        m.content = color;
+        document.head.appendChild(m);
+      }
+    };
 
     const apply = (dark: boolean) => {
       html.classList.toggle("dark", dark);
-      // Override all theme-color meta tags (Next.js renders one per media query)
-      metas.forEach((m) => m.setAttribute("content", color(dark)));
+      setThemeColor(dark ? "#000000" : "#ffffff");
     };
 
     if (theme === "dark") {
