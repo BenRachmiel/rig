@@ -5,8 +5,7 @@ import { PREAMP_ADMIN_URL } from "@/lib/env";
 import { createReadStream, createWriteStream } from "node:fs";
 import { open, rename, unlink, stat } from "node:fs/promises";
 import { pipeline } from "node:stream/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { randomBytes } from "node:crypto";
 
 export async function GET(request: NextRequest) {
@@ -138,7 +137,8 @@ export async function PATCH(request: NextRequest) {
     const audioDataOffset = await getID3v2Size(resolved);
 
     // Stream: new tags + audio data → temp file, then atomic rename
-    tmpPath = join(tmpdir(), `rig-tag-${randomBytes(8).toString("hex")}.tmp`);
+    // Temp file must be on the same filesystem as the target for rename() to work
+    tmpPath = join(dirname(resolved), `.rig-tag-${randomBytes(8).toString("hex")}.tmp`);
     const fileStat = await stat(resolved);
 
     const ws = createWriteStream(tmpPath);

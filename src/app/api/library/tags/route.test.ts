@@ -41,9 +41,10 @@ const mockWriteStream = {
   write: vi.fn((_data: unknown, cb: (err?: Error | null) => void) => cb(null)),
 };
 const mockReadStream = {};
+const mockCreateWriteStream = vi.fn(() => mockWriteStream);
 vi.mock("node:fs", () => ({
   createReadStream: () => mockReadStream,
-  createWriteStream: () => mockWriteStream,
+  createWriteStream: (...args: unknown[]) => mockCreateWriteStream(...args),
 }));
 
 vi.mock("node:stream/promises", () => ({
@@ -215,6 +216,23 @@ describe("PATCH /api/library/tags", () => {
       patchReq({ file: "track.mp3", tags: { title: "x" } }) as never,
     );
     expect(res.status).toBe(500);
+  });
+
+  it("writes temp file in the same directory as the source file", async () => {
+    mockParseFile.mockResolvedValue({
+      common: { title: "Old" },
+      format: {},
+    });
+    mockCreate.mockReturnValue(Buffer.from("ID3TAG"));
+
+    await PATCH(
+      patchReq({ file: "Artist/Album/track.mp3", tags: { artist: "New Artist" } }) as never,
+    );
+
+    // The temp file path should be in /music/Artist/Album/, not /tmp/
+    const tmpPath = mockCreateWriteStream.mock.calls[0][0] as string;
+    expect(tmpPath).toMatch(/^\/music\/Artist\/Album\/\.rig-tag-/);
+    expect(tmpPath).not.toContain("/tmp/");
   });
 
   it("orders text fields before binary fields", async () => {
