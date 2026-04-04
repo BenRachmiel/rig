@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useEffect, useCallback, useState } from "react";
-import { Play, Pause, SkipBack, SkipForward, Heart, ChevronUp, ChevronDown } from "lucide-react";
+import { Play, Pause, SkipBack, SkipForward, ChevronsLeft, ChevronsRight, Heart, ChevronUp, ChevronDown, AudioLines } from "lucide-react";
 import { useSwipeable } from "react-swipeable";
 import { Oscilloscope } from "./waveform";
 import { SyncedLyrics } from "./synced-lyrics";
@@ -22,6 +22,8 @@ interface AlbumUIProps {
   onPrevTrack: () => void;
   onAbandon?: () => void;
   analyserNode: AnalyserNode | null;
+  normalizationEnabled?: boolean;
+  onNormalizationToggle?: () => void;
 }
 
 export function AlbumUI({
@@ -34,8 +36,10 @@ export function AlbumUI({
   onPrevTrack,
   onAbandon,
   analyserNode,
+  normalizationEnabled,
+  onNormalizationToggle,
 }: AlbumUIProps) {
-  const [edgeFlash, setEdgeFlash] = useState<"left" | "right" | null>(null);
+  const [skipFlash, setSkipFlash] = useState<"prev" | "next" | null>(null);
   const [expanded, setExpanded] = useState(false);
   const [starredSet, setStarredSet] = useState<Set<string>>(new Set());
   const [ratings, setRatings] = useState<Map<string, number>>(new Map());
@@ -43,10 +47,10 @@ export function AlbumUI({
   const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const abandonTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const flashEdge = useCallback((side: "left" | "right") => {
+  const flashSkip = useCallback((dir: "prev" | "next") => {
     if (flashTimer.current) clearTimeout(flashTimer.current);
-    setEdgeFlash(side);
-    flashTimer.current = setTimeout(() => setEdgeFlash(null), 200);
+    setSkipFlash(dir);
+    flashTimer.current = setTimeout(() => setSkipFlash(null), 400);
   }, []);
 
   useEffect(() => {
@@ -81,8 +85,8 @@ export function AlbumUI({
   }, [album]);
 
   const swipeHandlers = useSwipeable({
-    onSwipedLeft: () => { flashEdge("right"); onNextTrack(); },
-    onSwipedRight: () => { flashEdge("left"); onPrevTrack(); },
+    onSwipedLeft: () => { flashSkip("next"); onNextTrack(); },
+    onSwipedRight: () => { flashSkip("prev"); onPrevTrack(); },
     onSwipedUp: () => setExpanded(true),
     onSwipedDown: () => setExpanded(false),
     preventScrollOnSwipe: true,
@@ -93,8 +97,8 @@ export function AlbumUI({
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
       if ((e.target as HTMLElement).isContentEditable) return;
       switch (e.key) {
-        case "ArrowLeft": e.preventDefault(); flashEdge("left"); onPrevTrack(); break;
-        case "ArrowRight": e.preventDefault(); flashEdge("right"); onNextTrack(); break;
+        case "ArrowLeft": e.preventDefault(); flashSkip("prev"); onPrevTrack(); break;
+        case "ArrowRight": e.preventDefault(); flashSkip("next"); onNextTrack(); break;
         case "ArrowUp": e.preventDefault(); setExpanded(true); break;
         case "ArrowDown": e.preventDefault(); setExpanded(false); break;
         case " ": e.preventDefault(); onPauseToggle(); break;
@@ -102,7 +106,7 @@ export function AlbumUI({
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [onNextTrack, onPrevTrack, onPauseToggle, flashEdge]);
+  }, [onNextTrack, onPrevTrack, onPauseToggle, flashSkip]);
 
   const currentSong = album.song[currentTrackIndex];
   const songId = currentSong?.id;
@@ -157,13 +161,11 @@ export function AlbumUI({
 
   return (
     <div {...swipeHandlers} className="relative flex flex-col items-center justify-center w-full h-full animate-in fade-in slide-in-from-bottom-2 duration-500">
-      {/* Edge flash */}
-      {edgeFlash === "left" && (
-        <div className="absolute left-0 top-0 w-1 h-full bg-white/10 animate-in fade-in duration-100 z-20" />
-      )}
-      {edgeFlash === "right" && (
-        <div className="absolute right-0 top-0 w-1 h-full bg-white/10 animate-in fade-in duration-100 z-20" />
-      )}
+      {/* Skip direction indicator */}
+      <div className={`absolute inset-0 flex items-center justify-center z-20 pointer-events-none transition-opacity duration-500 ${skipFlash ? "opacity-100" : "opacity-0"}`}>
+        {skipFlash === "prev" && <ChevronsLeft className="size-10 text-white/70" />}
+        {skipFlash === "next" && <ChevronsRight className="size-10 text-white/70" />}
+      </div>
 
       {/* Desktop ghost buttons */}
       <button
@@ -227,7 +229,7 @@ export function AlbumUI({
           onClick={onPauseToggle}
           className="size-14 rounded-full flex items-center justify-center transition-colors"
           style={{
-            border: "1px solid oklch(1 0 0 / calc(0.1 + var(--rv-peak) * 0.15))",
+            border: "1px solid oklch(var(--rv-fg-oklch) / calc(0.1 + var(--rv-peak) * 0.15))",
           }}
         >
           {isPlaying ? (
@@ -249,11 +251,20 @@ export function AlbumUI({
           >
             <Heart
               className={`size-5 ${
-                isStarred ? "fill-white/80 text-white/80" : "text-white/30"
+                isStarred ? "fill-foreground/80 text-foreground/80" : "text-foreground/30"
               }`}
             />
           </button>
           <StarRating rating={currentRating} onChange={handleSetRating} />
+          {onNormalizationToggle && (
+            <button
+              onClick={onNormalizationToggle}
+              className="p-1 transition-opacity"
+              title={normalizationEnabled ? "Volume normalization on" : "Volume normalization off"}
+            >
+              <AudioLines className={`size-5 ${normalizationEnabled ? "opacity-60" : "opacity-20"}`} />
+            </button>
+          )}
         </div>
       </div>
 

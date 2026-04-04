@@ -68,7 +68,7 @@ export function SyncedLyrics({ songId, progress, duration }: SyncedLyricsProps) 
     <div className="flex-1 min-h-0 px-2 py-4 flex flex-col items-center justify-center">
       {loading && (
         <div className="flex items-center justify-center py-8">
-          <div className="size-1 rounded-full bg-white/20 animate-pulse" />
+          <div className="size-1 rounded-full bg-foreground/20 animate-pulse" />
         </div>
       )}
       {!loading && lyrics && lyrics.line.length > 0 && (
@@ -76,13 +76,13 @@ export function SyncedLyrics({ songId, progress, duration }: SyncedLyricsProps) 
           <div className="text-center space-y-3">
             <p
               key={activeIndex}
-              className="text-sm text-white/90 animate-in fade-in duration-500"
+              className="text-sm text-foreground/90 animate-in fade-in duration-500"
             >
               {activeLine || "\u00A0"}
             </p>
             <p
               key={`next-${activeIndex}`}
-              className="text-xs text-white/30 animate-in fade-in duration-500"
+              className="text-xs text-foreground/30 animate-in fade-in duration-500"
             >
               {nextLine || "\u00A0"}
             </p>
@@ -92,7 +92,7 @@ export function SyncedLyrics({ songId, progress, duration }: SyncedLyricsProps) 
             {lyrics.line.map((line, i) => {
               if (!line.value.trim()) return <div key={i} className="h-4" />;
               return (
-                <div key={i} className="text-sm text-center text-white/50">
+                <div key={i} className="text-sm text-center text-foreground/50">
                   {line.value}
                 </div>
               );

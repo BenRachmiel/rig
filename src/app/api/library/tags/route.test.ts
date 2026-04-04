@@ -41,10 +41,10 @@ const mockWriteStream = {
   write: vi.fn((_data: unknown, cb: (err?: Error | null) => void) => cb(null)),
 };
 const mockReadStream = {};
-const mockCreateWriteStream = vi.fn(() => mockWriteStream);
+const mockCreateWriteStream = vi.fn((..._args: unknown[]) => mockWriteStream);
 vi.mock("node:fs", () => ({
   createReadStream: () => mockReadStream,
-  createWriteStream: (...args: unknown[]) => mockCreateWriteStream(...args),
+  createWriteStream: (...args: [string, ...unknown[]]) => mockCreateWriteStream(...args),
 }));
 
 vi.mock("node:stream/promises", () => ({
@@ -230,7 +230,7 @@ describe("PATCH /api/library/tags", () => {
     );
 
     // The temp file path should be in /music/Artist/Album/, not /tmp/
-    const tmpPath = mockCreateWriteStream.mock.calls[0][0] as string;
+    const tmpPath = (mockCreateWriteStream.mock.calls[0] as unknown[])[0] as string;
     expect(tmpPath).toMatch(/^\/music\/Artist\/Album\/\.rig-tag-/);
     expect(tmpPath).not.toContain("/tmp/");
   });

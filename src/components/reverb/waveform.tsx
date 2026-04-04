@@ -18,14 +18,40 @@ for (let i = 0; i < POINTS_PER_ROW; i++) {
   ENVELOPE[i] = Math.exp(-(x * x) / (2 * GAUSSIAN_SIGMA * GAUSSIAN_SIGMA));
 }
 
-// Precomputed opacity strings (256 levels, avoids per-frame toFixed + template literal allocation)
-const OPACITY_LUT: string[] = [];
-for (let i = 0; i < 256; i++) {
-  OPACITY_LUT[i] = `rgba(255,255,255,${(i / 255).toFixed(3)})`;
+interface ThemeColors {
+  fg: { r: number; g: number; b: number };
+  bg: { r: number; g: number; b: number };
+  lut: string[];
 }
 
-function opacityStr(val: number): string {
-  return OPACITY_LUT[Math.min(255, Math.max(0, (val * 255) | 0))];
+/** Parse a CSS color value to {r,g,b} via a temp canvas pixel read. */
+function parseColorToRGB(colorValue: string): { r: number; g: number; b: number } {
+  const canvas = document.createElement("canvas");
+  canvas.width = canvas.height = 1;
+  const ctx = canvas.getContext("2d")!;
+  ctx.fillStyle = colorValue;
+  ctx.fillRect(0, 0, 1, 1);
+  const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data;
+  return { r, g, b };
+}
+
+/** Build the 256-entry opacity LUT for a given foreground color. */
+function buildOpacityLUT(fg: { r: number; g: number; b: number }): string[] {
+  const lut: string[] = [];
+  for (let i = 0; i < 256; i++) {
+    lut[i] = `rgba(${fg.r},${fg.g},${fg.b},${(i / 255).toFixed(3)})`;
+  }
+  return lut;
+}
+
+/** Read theme colors from CSS custom properties and build LUT. */
+function readThemeColors(): ThemeColors {
+  const style = getComputedStyle(document.documentElement);
+  const fgVal = style.getPropertyValue("--foreground").trim();
+  const bgVal = style.getPropertyValue("--background").trim();
+  const fg = parseColorToRGB(fgVal || "oklch(0.985 0 0)");
+  const bg = parseColorToRGB(bgVal || "oklch(0 0 0)");
+  return { fg, bg, lut: buildOpacityLUT(fg) };
 }
 
 interface Row {
@@ -69,6 +95,9 @@ export function Oscilloscope({ analyserNode, isPlaying, progress, generation, ac
     prog: -1, w: 0, grad: null,
   });
 
+  // Theme-aware colors (rebuilt on theme change)
+  const colorsRef = useRef<ThemeColors | null>(null);
+
   const activeGateRef = useRef(active);
   analyserRef.current = analyserNode;
   isPlayingRef.current = isPlaying;
@@ -80,6 +109,19 @@ export function Oscilloscope({ analyserNode, isPlaying, progress, generation, ac
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
+
+    // Read initial theme colors
+    colorsRef.current = readThemeColors();
+
+    // Watch for theme changes via MutationObserver on <html> class
+    const observer = new MutationObserver(() => {
+      colorsRef.current = readThemeColors();
+      gradCache.current.prog = -1; // invalidate gradient cache
+    });
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["class"],
+    });
 
     // Cache dimensions via ResizeObserver instead of per-frame getBoundingClientRect
     const updateDims = () => {
@@ -101,6 +143,16 @@ export function Oscilloscope({ analyserNode, isPlaying, progress, generation, ac
       const now = performance.now();
       const dt = now - lastFrameTime;
       lastFrameTime = now;
+
+      const colors = colorsRef.current;
+      if (!colors) {
+        rafRef.current = requestAnimationFrame(draw);
+        return;
+      }
+      const { fg, bg, lut } = colors;
+
+      const opacityStr = (val: number): string =>
+        lut[Math.min(255, Math.max(0, (val * 255) | 0))];
 
       const { w, h, dpr } = dimsRef.current;
       if (w === 0 || h === 0) {
@@ -202,11 +254,10 @@ export function Oscilloscope({ analyserNode, isPlaying, progress, generation, ac
         if (Math.abs(gc.prog - prog) > 0.003 || gc.w !== w) {
           const grad = ctx.createLinearGradient(0, 0, w, 0);
           const stopProg = Math.max(0, prog - 0.002);
-          // Use alpha=1 as base — we'll scale per-row via globalAlpha
-          grad.addColorStop(0, "rgba(255,255,255,1)");
-          grad.addColorStop(stopProg, "rgba(255,255,255,1)");
-          grad.addColorStop(prog, "rgba(255,255,255,0.25)");
-          grad.addColorStop(1, "rgba(255,255,255,0.25)");
+          grad.addColorStop(0, `rgba(${fg.r},${fg.g},${fg.b},1)`);
+          grad.addColorStop(stopProg, `rgba(${fg.r},${fg.g},${fg.b},1)`);
+          grad.addColorStop(prog, `rgba(${fg.r},${fg.g},${fg.b},0.25)`);
+          grad.addColorStop(1, `rgba(${fg.r},${fg.g},${fg.b},0.25)`);
           gc.grad = grad;
           gc.prog = prog;
           gc.w = w;
@@ -216,7 +267,7 @@ export function Oscilloscope({ analyserNode, isPlaying, progress, generation, ac
       // Draw drifting rows (back-to-front: oldest first, newest last)
       const travel = h * TRAVEL_FRAC;
       const len = allRows.length;
-      ctx.fillStyle = "rgb(0,0,0)";
+      ctx.fillStyle = `rgb(${bg.r},${bg.g},${bg.b})`;
 
       for (let r = newHead; r < len; r++) {
         const { points, birth } = allRows[r];
@@ -299,7 +350,7 @@ export function Oscilloscope({ analyserNode, isPlaying, progress, generation, ac
         ctx.beginPath();
         ctx.moveTo(0, spawnY);
         ctx.lineTo(w, spawnY);
-        ctx.strokeStyle = "rgba(255,255,255,0.1)";
+        ctx.strokeStyle = `rgba(${fg.r},${fg.g},${fg.b},0.1)`;
         ctx.lineWidth = 1;
         ctx.stroke();
       }
@@ -312,6 +363,7 @@ export function Oscilloscope({ analyserNode, isPlaying, progress, generation, ac
     return () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
       ro.disconnect();
+      observer.disconnect();
     };
   }, []);
 

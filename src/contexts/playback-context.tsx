@@ -8,6 +8,7 @@ import type { SongID3 } from "@/types/api";
 
 const noopCallbacks: AudioEngineCallbacks = {
   onClipEnd: () => {},
+  onCrossfadeStart: () => {},
   onAlbumTrackChange: () => {},
   onAlbumEnd: () => {},
 };
@@ -22,10 +23,14 @@ export interface PlaybackContextValue {
   stop: () => void;
   isPlaying: boolean;
   isBuffering: boolean;
+  isNormalizing: boolean;
   loadError: string | null;
   progress: number;
   albumTrackIndex: number;
   analyserNode: AnalyserNode | null;
+  isCrossfading: boolean;
+  normalizationEnabled: boolean;
+  setNormalizationEnabled: (enabled: boolean) => void;
   setCallbacks: (cb: AudioEngineCallbacks) => void;
   clearCallbacks: () => void;
 }
@@ -40,6 +45,7 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
 
   const engine = useAudioEngine({
     onClipEnd: () => callbacksRef.current.onClipEnd(),
+    onCrossfadeStart: () => callbacksRef.current.onCrossfadeStart(),
     onAlbumTrackChange: (i) => callbacksRef.current.onAlbumTrackChange(i),
     onAlbumEnd: () => callbacksRef.current.onAlbumEnd(),
   });
@@ -84,22 +90,28 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
     pause: engine.pause,
     resume: engine.resume,
     stop: engine.stop,
+    setNormalizationEnabled: engine.setNormalizationEnabled,
     setCallbacks,
     clearCallbacks,
   }), [engine.playClip, engine.preloadClip, engine.playAlbum, engine.playAlbumTrack,
-       engine.pause, engine.resume, engine.stop, setCallbacks, clearCallbacks]);
+       engine.pause, engine.resume, engine.stop, engine.setNormalizationEnabled,
+       setCallbacks, clearCallbacks]);
 
   // Combine stable methods with volatile state — useMemo prevents re-creation when methods haven't changed
   const value = useMemo<PlaybackContextValue>(() => ({
     ...methods,
     isPlaying: engine.isPlaying,
     isBuffering: engine.isBuffering,
+    isNormalizing: engine.isNormalizing,
     loadError: engine.loadError,
     progress: engine.progress,
     albumTrackIndex: engine.albumTrackIndex,
     analyserNode: engine.analyserNode,
-  }), [methods, engine.isPlaying, engine.isBuffering, engine.loadError,
-       engine.progress, engine.albumTrackIndex, engine.analyserNode]);
+    isCrossfading: engine.isCrossfading,
+    normalizationEnabled: engine.normalizationEnabled,
+  }), [methods, engine.isPlaying, engine.isBuffering, engine.isNormalizing,
+       engine.loadError, engine.progress, engine.albumTrackIndex, engine.analyserNode,
+       engine.isCrossfading, engine.normalizationEnabled]);
 
   return (
     <PlaybackContext value={value}>

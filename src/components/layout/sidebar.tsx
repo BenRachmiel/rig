@@ -3,13 +3,14 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Download, Library, Headphones, KeyRound, ChevronUp } from "lucide-react";
+import { Home, Download, Library, Headphones, KeyRound, ChevronUp, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import { useNavStore } from "@/stores/nav-store";
 import { usePlaybackStore } from "@/stores/playback-store";
 
 const nav = [
+  { href: "/", label: "Home", icon: Home },
   { href: "/download", label: "Download", icon: Download },
   { href: "/library", label: "Library", icon: Library },
   { href: "/reverb", label: "Reverb", icon: Headphones },
@@ -74,7 +75,7 @@ export function Sidebar() {
           )}
         >
           {nav.map(({ href, label, icon: Icon }) => {
-            const active = pathname.startsWith(href);
+            const active = href === "/" ? pathname === "/" : pathname.startsWith(href);
             return (
               <Link
                 key={href}
@@ -92,6 +93,16 @@ export function Sidebar() {
               </Link>
             );
           })}
+          <button
+            onClick={() => {
+              setRevealed(false);
+              useNavStore.getState().openSettings();
+            }}
+            className="flex flex-col items-center justify-center gap-0.5 min-w-[48px] h-11 rounded-md transition-colors text-muted-foreground"
+          >
+            <Settings className="w-4 h-4" />
+            <span className="text-[10px]">Settings</span>
+          </button>
         </nav>
       </>
     );
@@ -106,7 +117,7 @@ export function Sidebar() {
         R
       </Link>
       {nav.map(({ href, label, icon: Icon }) => {
-        const active = pathname.startsWith(href);
+        const active = href === "/" ? pathname === "/" : pathname.startsWith(href);
         return (
           <Link
             key={href}
@@ -123,6 +134,13 @@ export function Sidebar() {
           </Link>
         );
       })}
+      <button
+        onClick={() => useNavStore.getState().openSettings()}
+        title="Settings"
+        className="mt-auto w-9 h-9 rounded-md flex items-center justify-center transition-colors text-muted-foreground hover:text-foreground hover:bg-accent"
+      >
+        <Settings className="w-4 h-4" />
+      </button>
     </aside>
   );
 }

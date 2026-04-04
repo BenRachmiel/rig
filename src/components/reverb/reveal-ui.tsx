@@ -32,7 +32,7 @@ export function RevealUI({ album, onRestart, dominantColor }: RevealUIProps) {
           className="relative w-48 h-48 sm:w-56 sm:h-56 rounded-md object-cover"
           style={{
             animation: "rv-reveal 1200ms ease-out forwards",
-            boxShadow: "0 0 calc(var(--rv-energy) * 80px) calc(var(--rv-energy) * 20px) oklch(1 0 0 / calc(var(--rv-energy) * 0.08))",
+            boxShadow: "0 0 calc(var(--rv-energy) * 80px) calc(var(--rv-energy) * 20px) oklch(var(--rv-fg-oklch) / calc(var(--rv-energy) * 0.08))",
           }}
         />
       </div>

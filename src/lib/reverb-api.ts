@@ -24,7 +24,13 @@ export const reverbApi = {
     return data["subsonic-response"].album;
   },
 
-  streamUrl: (id: string): string => `${API}/stream?id=${encodeURIComponent(id)}`,
+  streamUrl: (id: string, startTime?: number, duration?: number): string => {
+    let url = `${API}/stream?id=${encodeURIComponent(id)}`;
+    if (startTime !== undefined && duration !== undefined) {
+      url += `&startTime=${startTime}&duration=${duration}`;
+    }
+    return url;
+  },
 
   coverArtUrl: (id: string, size = 256): string =>
     `${API}/getCoverArt?id=${encodeURIComponent(id)}&size=${size}`,

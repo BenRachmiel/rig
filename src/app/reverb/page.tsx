@@ -2,11 +2,13 @@
 
 import { Suspense, useReducer, useEffect, useCallback, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { reverbReducer, initialState, makeClip } from "./reducer";
+import { reverbReducer, initialState } from "./reducer";
 import { usePlayback } from "@/contexts/playback-context";
 import { usePlaybackStore } from "@/stores/playback-store";
 import { useAudioReactivity } from "@/hooks/use-audio-reactivity";
 import { reverbApi } from "@/lib/reverb-api";
+import { useSettingsStore } from "@/stores/settings-store";
+import { computeGainFromBuffer, fetchAudioBuffer, normCacheKey } from "@/lib/normalize";
 import { ClipUI } from "@/components/reverb/clip-ui";
 import { AlbumUI } from "@/components/reverb/album-ui";
 import { RevealUI } from "@/components/reverb/reveal-ui";
@@ -34,6 +36,7 @@ function ReverbPageInner() {
   useEffect(() => {
     engine.setCallbacks({
       onClipEnd: () => dispatch({ type: "SKIP" }),
+      onCrossfadeStart: () => dispatch({ type: "SKIP" }),
       onAlbumTrackChange: (index) => dispatch({ type: "TRACK_CHANGE", index }),
       onAlbumEnd: () => dispatch({ type: "REVEAL" }),
     });
@@ -104,23 +107,15 @@ function ReverbPageInner() {
     if (state.needsRefill) fetchPool();
   }, [state.needsRefill, fetchPool]);
 
+  const offlineCacheEnabled = useSettingsStore((s) => s.offlineCacheEnabled);
+
+  // Pre-cache upcoming clip URLs when pool loads (if caching enabled)
+  // Pre-caching disabled: playClip does its own single-fetch (download + normalize).
+  // Offline pre-caching can't work reliably with random clip offsets from makeClip.
+
   useEffect(() => {
     if (state.phase !== "clip" || !state.currentClip) return;
     engine.playClip(state.currentClip);
-
-    // Preload N+1 via inactive audio element
-    const nextIndex = state.poolIndex + 1;
-    if (nextIndex < state.pool.length) {
-      const nextClip = makeClip(state.pool[nextIndex]);
-      engine.preloadClip(nextClip);
-    }
-
-    // Preload N+2 via fetch to prime HTTP cache
-    const aheadIndex = state.poolIndex + 2;
-    if (aheadIndex < state.pool.length) {
-      const url = reverbApi.streamUrl(state.pool[aheadIndex].id);
-      fetch(url, { priority: "low" } as RequestInit).catch(() => {});
-    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.currentClip]);
 
@@ -158,6 +153,29 @@ function ReverbPageInner() {
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.album]);
+
+  // Background-cache album tracks sequentially when caching enabled
+  useEffect(() => {
+    if (!offlineCacheEnabled || state.phase !== "album" || !state.album) return;
+    let cancelled = false;
+
+    (async () => {
+      const songs = state.album!.song;
+      for (let i = 1; i < songs.length; i++) {
+        if (cancelled) break;
+        try {
+          const url = reverbApi.streamUrl(songs[i].id);
+          const { buffer } = await fetchAudioBuffer(url);
+          if (!cancelled) {
+            await computeGainFromBuffer(normCacheKey(songs[i].id, false), buffer);
+          }
+        } catch { /* non-critical */ }
+      }
+    })();
+
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.album, offlineCacheEnabled]);
 
   useEffect(() => {
     if (state.phase !== "reveal" || !state.album) return;
@@ -232,7 +250,7 @@ function ReverbPageInner() {
   return (
     <div
       ref={reactivityRef}
-      className="relative bg-black text-white/90 overflow-hidden h-[100dvh] md:h-[calc(100dvh-3.5rem)]"
+      className="relative bg-background text-foreground/90 overflow-hidden h-[100dvh] md:h-[calc(100dvh-3.5rem)]"
     >
       {/* Content */}
       <div className="flex flex-col items-center justify-center h-full px-6 max-w-sm md:max-w-md lg:max-w-lg mx-auto">
@@ -242,7 +260,7 @@ function ReverbPageInner() {
             <span className="text-sm font-light tracking-[0.3em] uppercase opacity-40">
               reverb
             </span>
-            <div className="w-12 h-px bg-white/20" />
+            <div className="w-12 h-px bg-foreground/20" />
             <button
               onClick={handleStart}
               className="text-xs tracking-[0.2em] uppercase opacity-30 hover:opacity-60 transition-opacity"
@@ -256,9 +274,9 @@ function ReverbPageInner() {
         {state.phase === "loading" && (
           <div className="flex flex-col items-center gap-3 animate-in fade-in duration-300">
             <div className="flex items-center gap-2">
-              <div className="size-1 rounded-full bg-white/30 animate-pulse" />
-              <div className="size-1 rounded-full bg-white/30 animate-pulse" style={{ animationDelay: "150ms" }} />
-              <div className="size-1 rounded-full bg-white/30 animate-pulse" style={{ animationDelay: "300ms" }} />
+              <div className="size-1 rounded-full bg-foreground/30 animate-pulse" />
+              <div className="size-1 rounded-full bg-foreground/30 animate-pulse" style={{ animationDelay: "150ms" }} />
+              <div className="size-1 rounded-full bg-foreground/30 animate-pulse" style={{ animationDelay: "300ms" }} />
             </div>
             <span className="text-[10px] tracking-[0.2em] uppercase opacity-20">
               fetching clips
@@ -269,10 +287,10 @@ function ReverbPageInner() {
         {/* Loading — album metadata fetch (skeleton) */}
         {state.phase === "album_loading" && (
           <div className="flex flex-col items-center gap-5 w-full animate-in fade-in duration-300">
-            <div className="w-48 h-48 sm:w-56 sm:h-56 rounded-md bg-white/5 animate-pulse" />
-            <div className="h-4 w-32 rounded bg-white/5 animate-pulse" />
-            <div className="h-3 w-24 rounded bg-white/5 animate-pulse" />
-            <div className="h-2 w-20 rounded bg-white/5 animate-pulse" />
+            <div className="w-48 h-48 sm:w-56 sm:h-56 rounded-md bg-foreground/5 animate-pulse" />
+            <div className="h-4 w-32 rounded bg-foreground/5 animate-pulse" />
+            <div className="h-3 w-24 rounded bg-foreground/5 animate-pulse" />
+            <div className="h-2 w-20 rounded bg-foreground/5 animate-pulse" />
           </div>
         )}
 
@@ -282,6 +300,7 @@ function ReverbPageInner() {
             <ClipUI
               isPlaying={engine.isPlaying}
               isBuffering={engine.isBuffering}
+              isNormalizing={engine.isNormalizing}
               progress={engine.progress}
               onSkip={handleSkip}
               onBack={handleBack}
@@ -289,6 +308,8 @@ function ReverbPageInner() {
               onPauseToggle={handlePauseToggle}
               analyserNode={engine.analyserNode}
               clipGeneration={state.poolIndex}
+              normalizationEnabled={engine.normalizationEnabled}
+              onNormalizationToggle={() => engine.setNormalizationEnabled(!engine.normalizationEnabled)}
             />
           </div>
         )}
@@ -307,6 +328,8 @@ function ReverbPageInner() {
               onPrevTrack={() => engine.playAlbumTrack(Math.max(0, engine.albumTrackIndex - 1))}
               onAbandon={handleAbandon}
               analyserNode={engine.analyserNode}
+              normalizationEnabled={engine.normalizationEnabled}
+              onNormalizationToggle={() => engine.setNormalizationEnabled(!engine.normalizationEnabled)}
             />
           </div>
         )}

@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState, useEffect, useCallback } from "react";
-import { Play, Pause, ChevronUp, SkipBack, SkipForward } from "lucide-react";
+import { Play, Pause, ChevronUp, SkipBack, SkipForward, ChevronsLeft, ChevronsRight, AudioLines } from "lucide-react";
 import { useSwipeable } from "react-swipeable";
 import { Oscilloscope } from "./waveform";
 import { CLIP_DURATION } from "@/app/reverb/reducer";
@@ -10,6 +10,7 @@ import { formatTime } from "@/lib/utils";
 interface ClipUIProps {
   isPlaying: boolean;
   isBuffering?: boolean;
+  isNormalizing?: boolean;
   progress: number;
   onSkip: () => void;
   onBack: () => void;
@@ -17,6 +18,8 @@ interface ClipUIProps {
   onPauseToggle: () => void;
   analyserNode: AnalyserNode | null;
   clipGeneration?: number;
+  normalizationEnabled?: boolean;
+  onNormalizationToggle?: () => void;
 }
 
 const DEBOUNCE_MS = 300;
@@ -29,6 +32,7 @@ function haptic() {
 export function ClipUI({
   isPlaying,
   isBuffering,
+  isNormalizing,
   progress,
   onSkip,
   onBack,
@@ -36,8 +40,10 @@ export function ClipUI({
   onPauseToggle,
   analyserNode,
   clipGeneration,
+  normalizationEnabled,
+  onNormalizationToggle,
 }: ClipUIProps) {
-  const [edgeFlash, setEdgeFlash] = useState<"left" | "right" | null>(null);
+  const [skipFlash, setSkipFlash] = useState<"prev" | "next" | null>(null);
   const [scopeDip, setScopeDip] = useState(false);
   const [showHints, setShowHints] = useState(false);
   const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -54,10 +60,10 @@ export function ClipUI({
     }
   }, []);
 
-  const flashEdge = useCallback((side: "left" | "right") => {
+  const flashSkip = useCallback((dir: "prev" | "next") => {
     if (flashTimer.current) clearTimeout(flashTimer.current);
-    setEdgeFlash(side);
-    flashTimer.current = setTimeout(() => setEdgeFlash(null), 200);
+    setSkipFlash(dir);
+    flashTimer.current = setTimeout(() => setSkipFlash(null), 400);
   }, []);
 
   useEffect(() => {
@@ -90,17 +96,17 @@ export function ClipUI({
 
   const handleSkip = useCallback(() => {
     if (!tryNav()) return;
-    flashEdge("right");
+    flashSkip("next");
     haptic();
     onSkip();
-  }, [tryNav, flashEdge, onSkip]);
+  }, [tryNav, flashSkip, onSkip]);
 
   const handleBack = useCallback(() => {
     if (!tryNav()) return;
-    flashEdge("left");
+    flashSkip("prev");
     haptic();
     onBack();
-  }, [tryNav, flashEdge, onBack]);
+  }, [tryNav, flashSkip, onBack]);
 
   const handleCommit = useCallback(() => {
     if (!tryNav()) return;
@@ -134,21 +140,19 @@ export function ClipUI({
 
   return (
     <div {...swipeHandlers} className="relative flex flex-col items-center w-full">
-      {/* Edge flash */}
-      {edgeFlash === "left" && (
-        <div className="absolute left-0 top-0 w-1 h-full bg-white/10 animate-in fade-in duration-100" />
-      )}
-      {edgeFlash === "right" && (
-        <div className="absolute right-0 top-0 w-1 h-full bg-white/10 animate-in fade-in duration-100" />
-      )}
+      {/* Skip direction indicator */}
+      <div className={`absolute inset-0 flex items-center justify-center z-20 pointer-events-none transition-opacity duration-500 ${skipFlash ? "opacity-100" : "opacity-0"}`}>
+        {skipFlash === "prev" && <ChevronsLeft className="size-10 text-white/70" />}
+        {skipFlash === "next" && <ChevronsRight className="size-10 text-white/70" />}
+      </div>
 
       {/* First-visit gesture hints */}
       {showHints && (
         <div
-          className="absolute inset-0 z-10 flex items-center justify-center bg-black/60 animate-in fade-in duration-500"
+          className="absolute inset-0 z-10 flex items-center justify-center bg-background/60 animate-in fade-in duration-500"
           onClick={dismissHints}
         >
-          <div className="text-center space-y-3 text-white/50 text-xs tracking-wider">
+          <div className="text-center space-y-3 text-foreground/50 text-xs tracking-wider">
             <p><kbd className="opacity-70">arrow</kbd> / <span className="opacity-70">swipe</span> to skip</p>
             <p><kbd className="opacity-70">up</kbd> / <span className="opacity-70">swipe up</span> to commit</p>
             <p><kbd className="opacity-70">space</kbd> to pause</p>
@@ -181,17 +185,17 @@ export function ClipUI({
 
       {/* Controls */}
       <div className="flex flex-col items-center gap-6 pt-6 shrink-0">
-        <span className={`text-xs tabular-nums tracking-wider opacity-30${isBuffering ? " animate-pulse" : ""}`}>
-          {isBuffering ? "buffering" : `${formatTime(elapsed)} / ${formatTime(CLIP_DURATION)}`}
+        <span className={`text-xs tabular-nums tracking-wider opacity-30${isBuffering || isNormalizing ? " animate-pulse" : ""}`}>
+          {isBuffering ? "buffering" : isNormalizing ? "normalizing" : `${formatTime(elapsed)} / ${formatTime(CLIP_DURATION)}`}
         </span>
 
         <button
           onClick={onPauseToggle}
-          className={`size-16 rounded-full flex items-center justify-center transition-colors${isBuffering ? " animate-pulse" : ""}`}
+          className={`size-16 rounded-full flex items-center justify-center transition-colors${isBuffering || isNormalizing ? " animate-pulse" : ""}`}
           style={{
-            border: isBuffering
-              ? "1px solid oklch(1 0 0 / 0.3)"
-              : "1px solid oklch(1 0 0 / calc(0.1 + var(--rv-peak) * 0.15))",
+            border: isBuffering || isNormalizing
+              ? "1px solid oklch(var(--rv-fg-oklch) / 0.3)"
+              : "1px solid oklch(var(--rv-fg-oklch) / calc(0.1 + var(--rv-peak) * 0.15))",
           }}
         >
           {isPlaying ? (
@@ -201,9 +205,20 @@ export function ClipUI({
           )}
         </button>
 
-        <div className="flex flex-col items-center gap-1">
-          <ChevronUp className="size-4 opacity-20" />
-          <span className="text-[10px] tracking-[0.2em] uppercase opacity-20">swipe up</span>
+        <div className="flex items-center gap-4">
+          <div className="flex flex-col items-center gap-1">
+            <ChevronUp className="size-4 opacity-20" />
+            <span className="text-[10px] tracking-[0.2em] uppercase opacity-20">swipe up</span>
+          </div>
+          {onNormalizationToggle && (
+            <button
+              onClick={onNormalizationToggle}
+              className="p-1.5 transition-opacity"
+              title={normalizationEnabled ? "Volume normalization on" : "Volume normalization off"}
+            >
+              <AudioLines className={`size-4 ${normalizationEnabled ? "opacity-60" : "opacity-20"}`} />
+            </button>
+          )}
         </div>
       </div>
     </div>

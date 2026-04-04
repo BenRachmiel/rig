@@ -74,6 +74,11 @@ export function reverbReducer(state: ReverbState, action: ReverbAction): ReverbS
       if (pool.length === 0) {
         return { ...state, phase: "idle", error: "No songs found in library" };
       }
+      // Only create a clip if we don't already have one (first load).
+      // Refills just extend the pool — the current clip stays as-is.
+      if (state.currentClip) {
+        return { ...state, pool, needsRefill: false, error: null };
+      }
       const clip = makeClip(pool[state.poolIndex]);
       return {
         ...state,

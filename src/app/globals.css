@@ -1,6 +1,6 @@
 @import "tailwindcss";
 @import "tw-animate-css";
-@import "shadcn/tailwind.css";
+@import "../../node_modules/shadcn/dist/tailwind.css";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -125,6 +125,11 @@
   --rv-treble: 0;
   --rv-energy: 0;
   --rv-peak: 0;
+  --rv-fg-oklch: 0.145 0 0;
+}
+
+.dark {
+  --rv-fg-oklch: 0.985 0 0;
 }
 
 @keyframes rv-reveal {
@@ -150,6 +155,6 @@
   }
   html {
     @apply font-sans;
-    background: #000;
+    background: var(--background);
   }
 }

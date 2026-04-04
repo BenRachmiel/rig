@@ -1,4 +1,4 @@
-music_dir := "/tmp/rig-test-music"
+music_dir := "/data/music"
 default_mirrors := "https://frankfurt-1.monochrome.tf,https://eu-central.monochrome.tf,https://arran.monochrome.tf,https://hifi-one.spotisaver.net,https://hifi-two.spotisaver.net"
 
 # Run all three services
