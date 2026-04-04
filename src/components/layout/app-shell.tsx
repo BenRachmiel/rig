@@ -19,11 +19,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const theme = useSettingsStore((s) => s.theme);
   useEffect(() => {
     const html = document.documentElement;
-    const meta = document.querySelector('meta[name="theme-color"]');
+    const metas = document.querySelectorAll('meta[name="theme-color"]');
+    const color = (dark: boolean) => dark ? "#000000" : "#ffffff";
 
     const apply = (dark: boolean) => {
       html.classList.toggle("dark", dark);
-      if (meta) meta.setAttribute("content", dark ? "#000000" : "#ffffff");
+      // Override all theme-color meta tags (Next.js renders one per media query)
+      metas.forEach((m) => m.setAttribute("content", color(dark)));
     };
 
     if (theme === "dark") {
