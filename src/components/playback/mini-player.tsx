@@ -34,7 +34,7 @@ export function MiniPlayer() {
     <div
       className={
         isMobile
-          ? "fixed bottom-0 left-0 right-0 z-35 border-t border-border bg-card"
+          ? "fixed bottom-14 left-0 right-0 z-35 border-t border-border bg-card"
           : "fixed bottom-6 right-6 z-35 w-80 rounded-lg border border-border bg-card shadow-2xl"
       }
     >
