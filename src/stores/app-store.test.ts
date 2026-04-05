@@ -32,9 +32,7 @@ beforeEach(() => {
     totalTracks: 0,
     jobs: new Map(),
     pendingJobId: null,
-    sentTrackCount: 0,
     lastEventId: 0,
-    logs: [],
     dockOpen: false,
     dockTab: "preview",
   });

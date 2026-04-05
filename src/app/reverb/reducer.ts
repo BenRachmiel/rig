@@ -6,7 +6,7 @@ export interface Clip {
   duration: number;
 }
 
-export type Phase = "idle" | "loading" | "clip" | "album_loading" | "album" | "reveal";
+export type Phase = "idle" | "loading" | "clip" | "album_loading" | "album";
 
 export interface ReverbState {
   phase: Phase;
@@ -27,7 +27,7 @@ export type ReverbAction =
   | { type: "COMMIT" }
   | { type: "ALBUM_LOADED"; album: AlbumWithSongsID3 }
   | { type: "TRACK_CHANGE"; index: number }
-  | { type: "REVEAL" }
+  | { type: "ALBUM_FINISHED" }
   | { type: "RESTART" }
   | { type: "RESTORE"; album: AlbumWithSongsID3; trackIndex: number }
   | { type: "ABANDON_ALBUM" }
@@ -67,7 +67,7 @@ export function reverbReducer(state: ReverbState, action: ReverbAction): ReverbS
   switch (action.type) {
     case "POOL_LOADED": {
       // Don't overwrite album/album_loading phases with clip view
-      if (state.phase === "album" || state.phase === "album_loading" || state.phase === "reveal") {
+      if (state.phase === "album" || state.phase === "album_loading") {
         return state;
       }
       const pool = [...state.pool, ...action.songs];
@@ -135,9 +135,20 @@ export function reverbReducer(state: ReverbState, action: ReverbAction): ReverbS
       return { ...state, albumTrackIndex: action.index };
     }
 
-    case "REVEAL": {
+    case "ALBUM_FINISHED": {
       if (state.phase !== "album") return state;
-      return { ...state, phase: "reveal" };
+      // Return to clip mode if we have pool songs, otherwise restart
+      if (state.pool.length > 0 && state.poolIndex < state.pool.length) {
+        const clip = makeClip(state.pool[state.poolIndex]);
+        return {
+          ...state,
+          phase: "clip",
+          currentClip: clip,
+          album: null,
+          albumTrackIndex: 0,
+        };
+      }
+      return { ...initialState, phase: "loading" };
     }
 
     case "RESTORE": {
@@ -150,7 +161,7 @@ export function reverbReducer(state: ReverbState, action: ReverbAction): ReverbS
     }
 
     case "ABANDON_ALBUM": {
-      if (state.phase !== "album" && state.phase !== "reveal") return state;
+      if (state.phase !== "album") return state;
       // Return to clip mode if we have pool songs, otherwise restart
       if (state.pool.length > 0 && state.poolIndex < state.pool.length) {
         const clip = makeClip(state.pool[state.poolIndex]);

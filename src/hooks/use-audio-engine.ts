@@ -5,7 +5,7 @@ import type { Clip } from "@/app/reverb/reducer";
 import type { SongID3 } from "@/types/api";
 import { reverbApi } from "@/lib/reverb-api";
 import { useSettingsStore } from "@/stores/settings-store";
-import { computeGainFromBuffer, fetchAudioBuffer, normCacheKey, getStoredGain } from "@/lib/normalize";
+import { computeGainFromBuffer, fetchAudioBuffer, normCacheKey } from "@/lib/normalize";
 
 export interface AudioEngineCallbacks {
   onClipEnd: () => void;
@@ -21,9 +21,6 @@ const LOAD_TIMEOUT_MS = 8_000;
 
 /** Wait for audio element to load metadata, with timeout and error handling. */
 function waitForLoad(el: HTMLAudioElement, url: string, timeoutMs = LOAD_TIMEOUT_MS): Promise<void> {
-  // Synchronously reset + drain: pause, wipe src, flush via load().
-  // Then wait a microtask so any queued abort/error events from the
-  // reset fire and clear before we attach our real listeners.
   el.pause();
   el.removeAttribute("src");
   el.load();
@@ -53,6 +50,8 @@ function waitForLoad(el: HTMLAudioElement, url: string, timeoutMs = LOAD_TIMEOUT
     }));
 }
 
+/** Result of loadTrack: "ok" to proceed, "stale" if superseded, "error" on failure. */
+type LoadResult = "ok" | "stale" | "error";
 
 export function useAudioEngine(callbacks: AudioEngineCallbacks) {
   const cbRef = useRef(callbacks);
@@ -68,7 +67,6 @@ export function useAudioEngine(callbacks: AudioEngineCallbacks) {
   const sourceBRef = useRef<MediaElementAudioSourceNode | null>(null);
   const gainARef = useRef<GainNode | null>(null);
   const gainBRef = useRef<GainNode | null>(null);
-  /** Per-element normalization gain applied on top of taper gain */
   const normGainARef = useRef<GainNode | null>(null);
   const normGainBRef = useRef<GainNode | null>(null);
 
@@ -89,15 +87,12 @@ export function useAudioEngine(callbacks: AudioEngineCallbacks) {
   const [analyserNode, setAnalyserNode] = useState<AnalyserNode | null>(null);
   const [isBuffering, setIsBuffering] = useState(false);
   const [isNormalizing, setIsNormalizing] = useState(false);
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const [isCrossfading, setIsCrossfading] = useState(false);
   const normalizationEnabled = useSettingsStore((s) => s.normalizationEnabled);
   const normalizationRef = useRef(normalizationEnabled);
   normalizationRef.current = normalizationEnabled;
 
   const setNormalizationEnabled = useCallback((enabled: boolean) => {
     useSettingsStore.getState().set("normalizationEnabled", enabled);
-    // When toggling off, reset normalization gains to unity
     if (!enabled) {
       const ctx = audioCtxRef.current;
       if (ctx) {
@@ -149,7 +144,6 @@ export function useAudioEngine(callbacks: AudioEngineCallbacks) {
     };
   }, [releaseWakeLock]);
 
-  // Acquire/release wake lock based on playback state
   useEffect(() => {
     if (isPlaying) acquireWakeLock();
     else releaseWakeLock();
@@ -162,9 +156,6 @@ export function useAudioEngine(callbacks: AudioEngineCallbacks) {
     analyser.fftSize = 2048;
     analyser.connect(ctx.destination);
 
-    // Audio graph: source → normGain → taperGain → visualAnalyser → destination
-    // normGain holds the per-song volume offset (pre-computed from full decode)
-    // taperGain handles crossfade/taper ramps
     const gainA = ctx.createGain();
     const gainB = ctx.createGain();
     const normGainA = ctx.createGain();
@@ -225,7 +216,6 @@ export function useAudioEngine(callbacks: AudioEngineCallbacks) {
     if (bGain) bGain.gain.value = 0;
   }, []);
 
-  /** Apply pre-computed normalization gain from an audio buffer. */
   const applyNormGain = useCallback(async (cacheKey: string, buffer: ArrayBuffer): Promise<void> => {
     if (!normalizationRef.current) return;
     const gain = await computeGainFromBuffer(cacheKey, buffer);
@@ -254,7 +244,6 @@ export function useAudioEngine(callbacks: AudioEngineCallbacks) {
           return;
         }
 
-        // Fire crossfade callback when approaching end (short clips skip crossfade)
         if (
           !crossfadeFiredRef.current &&
           clip.duration > CROSSFADE_S * 2 &&
@@ -264,7 +253,6 @@ export function useAudioEngine(callbacks: AudioEngineCallbacks) {
           cbRef.current.onCrossfadeStart();
         }
 
-        // Throttle React state updates to ~15fps (every 4th frame at 60hz)
         if (++frameCount.current % 4 === 0) {
           setProgress(Math.min(1, Math.max(0, elapsed / clip.duration)));
         }
@@ -288,6 +276,50 @@ export function useAudioEngine(callbacks: AudioEngineCallbacks) {
       progressRafRef.current = null;
     }
   }, []);
+
+  /**
+   * Shared fetch → normalize → load pipeline.
+   * Returns "ok" if the element is ready to play, "stale" if superseded by
+   * a newer load, or "error" if fetch/decode/load failed.
+   */
+  const loadTrack = useCallback(
+    async (el: HTMLAudioElement, streamUrl: string, normKey: string, gen: number): Promise<LoadResult> => {
+      const normGainNode = getActiveNormGain();
+      if (normGainNode) normGainNode.gain.value = 1;
+
+      setIsBuffering(true);
+
+      let blobUrl: string;
+      try {
+        const { buffer, blobUrl: url } = await fetchAudioBuffer(streamUrl);
+        blobUrl = url;
+        if (loadGenRef.current !== gen) { URL.revokeObjectURL(url); return "stale"; }
+        setIsBuffering(false);
+
+        setIsNormalizing(true);
+        await applyNormGain(normKey, buffer);
+        setIsNormalizing(false);
+        if (loadGenRef.current !== gen) { URL.revokeObjectURL(blobUrl); return "stale"; }
+      } catch {
+        setIsBuffering(false);
+        setIsNormalizing(false);
+        if (loadGenRef.current !== gen) return "stale";
+        return "error";
+      }
+
+      try {
+        await waitForLoad(el, blobUrl);
+      } catch {
+        URL.revokeObjectURL(blobUrl);
+        if (loadGenRef.current !== gen) return "stale";
+        return "error";
+      }
+      if (loadGenRef.current !== gen) { URL.revokeObjectURL(blobUrl); return "stale"; }
+
+      return "ok";
+    },
+    [getActiveNormGain, applyNormGain],
+  );
 
   const playClip = useCallback(
     async (clip: Clip) => {
@@ -315,18 +347,13 @@ export function useAudioEngine(callbacks: AudioEngineCallbacks) {
         taperTimerRef.current = setTimeout(() => {
           oldEl?.pause();
           crossfadingRef.current = false;
-          setIsCrossfading(false);
         }, taperMs);
 
-        if (useClipCrossfade) {
-          crossfadingRef.current = true;
-          setIsCrossfading(true);
-        }
+        if (useClipCrossfade) crossfadingRef.current = true;
       }
 
       // Swap to the other element
-      const nextSide: "a" | "b" = activeRef.current === "a" ? "b" : "a";
-      activeRef.current = nextSide;
+      activeRef.current = activeRef.current === "a" ? "b" : "a";
 
       modeRef.current = "clip";
       clipRef.current = clip;
@@ -338,50 +365,12 @@ export function useAudioEngine(callbacks: AudioEngineCallbacks) {
       const el = getActive()!;
       const inGain = getActiveGain();
 
-      // Reset normalization gain for new clip
-      const normGainNode = getActiveNormGain();
-      if (normGainNode) normGainNode.gain.value = 1;
+      const isClip = streamUrl.includes("startTime");
+      const result = await loadTrack(el, streamUrl, normCacheKey(clip.song.id, isClip), gen);
+      if (result === "stale") return;
+      if (result === "error") { cbRef.current.onClipEnd(); return; }
 
-      setIsBuffering(true);
-      setLoadError(null);
-
-      // Single fetch: download once, use for both normalization and playback
-      let blobUrl: string;
-      try {
-        const { buffer, blobUrl: url } = await fetchAudioBuffer(streamUrl);
-        blobUrl = url;
-        if (loadGenRef.current !== gen) { URL.revokeObjectURL(url); return; }
-
-        setIsBuffering(false);
-
-        // Compute normalization from the already-downloaded buffer
-        const isClip = streamUrl.includes("startTime");
-        setIsNormalizing(true);
-        await applyNormGain(normCacheKey(clip.song.id, isClip), buffer);
-        setIsNormalizing(false);
-        if (loadGenRef.current !== gen) { URL.revokeObjectURL(blobUrl); return; }
-      } catch (err) {
-        setIsBuffering(false);
-        setIsNormalizing(false);
-        if (loadGenRef.current !== gen) return;
-        setLoadError(err instanceof Error ? err.message : "Load failed");
-        cbRef.current.onClipEnd();
-        return;
-      }
-
-      // Load blob URL into the audio element (already in memory — near-instant)
-      try {
-        await waitForLoad(el, blobUrl);
-      } catch (err) {
-        URL.revokeObjectURL(blobUrl);
-        if (loadGenRef.current !== gen) return;
-        setLoadError(err instanceof Error ? err.message : "Load failed");
-        cbRef.current.onClipEnd();
-        return;
-      }
-      if (loadGenRef.current !== gen) { URL.revokeObjectURL(blobUrl); return; }
-
-      // Taper in: start silent, ramp to 1
+      // Taper in
       if (inGain) {
         const now = ctx.currentTime;
         inGain.gain.cancelScheduledValues(now);
@@ -414,20 +403,7 @@ export function useAudioEngine(callbacks: AudioEngineCallbacks) {
         navigator.mediaSession.setActionHandler("previoustrack", null);
       }
     },
-    [ensureAudioContext, getActive, getActiveGain, getActiveNormGain, applyNormGain, startProgressTracking, stopProgressTracking],
-  );
-
-  const preloadClip = useCallback(
-    (clip: Clip) => {
-      // Don't preload during crossfade — would abort the fading-out element
-      if (crossfadingRef.current) return;
-      // Preload on whichever element is NOT active
-      const el = activeRef.current === "a" ? audioB.current : audioA.current;
-      if (!el) return;
-      el.src = reverbApi.streamUrl(clip.song.id, clip.seekOffset, clip.duration);
-      el.load();
-    },
-    [],
+    [ensureAudioContext, getActive, getActiveGain, loadTrack, startProgressTracking, stopProgressTracking],
   );
 
   const playAlbum = useCallback(
@@ -445,7 +421,6 @@ export function useAudioEngine(callbacks: AudioEngineCallbacks) {
       if (clipTimerRef.current) clearTimeout(clipTimerRef.current);
       if (taperTimerRef.current) clearTimeout(taperTimerRef.current);
 
-      // Reset gains for album mode
       resetGains();
 
       const el = getActive()!;
@@ -462,41 +437,9 @@ export function useAudioEngine(callbacks: AudioEngineCallbacks) {
         setAlbumTrackIndex(idx);
         cbRef.current.onAlbumTrackChange(idx);
 
-        // Reset normalization for new track
-        const normGainNode = getActiveNormGain();
-        if (normGainNode) normGainNode.gain.value = 1;
-
-        const streamUrl = reverbApi.streamUrl(songs[idx].id);
-        setIsBuffering(true);
-
-        let blobUrl: string;
-        try {
-          const { buffer, blobUrl: url } = await fetchAudioBuffer(streamUrl);
-          blobUrl = url;
-          if (loadGenRef.current !== gen) { URL.revokeObjectURL(url); return; }
-          setIsBuffering(false);
-
-          setIsNormalizing(true);
-          await applyNormGain(normCacheKey(songs[idx].id, false), buffer);
-          setIsNormalizing(false);
-          if (loadGenRef.current !== gen) { URL.revokeObjectURL(blobUrl); return; }
-        } catch {
-          setIsBuffering(false);
-          setIsNormalizing(false);
-          if (loadGenRef.current !== gen) return;
-          await playTrack(idx + 1);
-          return;
-        }
-
-        try {
-          await waitForLoad(el, blobUrl);
-        } catch {
-          URL.revokeObjectURL(blobUrl);
-          if (loadGenRef.current !== gen) return;
-          await playTrack(idx + 1);
-          return;
-        }
-        if (loadGenRef.current !== gen) { URL.revokeObjectURL(blobUrl); return; }
+        const result = await loadTrack(el, reverbApi.streamUrl(songs[idx].id), normCacheKey(songs[idx].id, false), gen);
+        if (result === "stale") return;
+        if (result === "error") { await playTrack(idx + 1); return; }
 
         await el.play();
         setIsPlaying(true);
@@ -523,7 +466,7 @@ export function useAudioEngine(callbacks: AudioEngineCallbacks) {
       el.onended = () => playTrack(albumIndexRef.current + 1);
       await playTrack(startIndex);
     },
-    [ensureAudioContext, getActive, getActiveNormGain, resetGains, applyNormGain, startProgressTracking, stopProgressTracking],
+    [ensureAudioContext, getActive, resetGains, loadTrack, startProgressTracking, stopProgressTracking],
   );
 
   const playAlbumTrack = useCallback(
@@ -546,15 +489,10 @@ export function useAudioEngine(callbacks: AudioEngineCallbacks) {
       setAlbumTrackIndex(index);
       cbRef.current.onAlbumTrackChange(index);
 
-      // Reset normalization for new track
-      const normGainNode = getActiveNormGain();
-      if (normGainNode) normGainNode.gain.value = 1;
-
       const song = albumSongsRef.current[index];
-      const streamUrl = reverbApi.streamUrl(song.id);
-      setIsBuffering(true);
-
-      const skipToNext = () => {
+      const result = await loadTrack(el, reverbApi.streamUrl(song.id), normCacheKey(song.id, false), gen);
+      if (result === "stale") return;
+      if (result === "error") {
         const next = albumIndexRef.current + 1;
         if (next >= albumSongsRef.current.length) {
           setIsPlaying(false);
@@ -563,36 +501,8 @@ export function useAudioEngine(callbacks: AudioEngineCallbacks) {
           return;
         }
         playAlbumTrack(next);
-      };
-
-      let blobUrl: string;
-      try {
-        const { buffer, blobUrl: url } = await fetchAudioBuffer(streamUrl);
-        blobUrl = url;
-        if (loadGenRef.current !== gen) { URL.revokeObjectURL(url); return; }
-        setIsBuffering(false);
-
-        setIsNormalizing(true);
-        await applyNormGain(normCacheKey(song.id, false), buffer);
-        setIsNormalizing(false);
-        if (loadGenRef.current !== gen) { URL.revokeObjectURL(blobUrl); return; }
-      } catch {
-        setIsBuffering(false);
-        setIsNormalizing(false);
-        if (loadGenRef.current !== gen) return;
-        skipToNext();
         return;
       }
-
-      try {
-        await waitForLoad(el, blobUrl);
-      } catch {
-        URL.revokeObjectURL(blobUrl);
-        if (loadGenRef.current !== gen) return;
-        skipToNext();
-        return;
-      }
-      if (loadGenRef.current !== gen) { URL.revokeObjectURL(blobUrl); return; }
 
       await el.play();
       setIsPlaying(true);
@@ -607,7 +517,7 @@ export function useAudioEngine(callbacks: AudioEngineCallbacks) {
         });
       }
     },
-    [getActive, getActiveNormGain, applyNormGain, startProgressTracking, stopProgressTracking],
+    [getActive, loadTrack, startProgressTracking, stopProgressTracking],
   );
 
   const pause = useCallback(() => {
@@ -637,7 +547,6 @@ export function useAudioEngine(callbacks: AudioEngineCallbacks) {
     stopProgressTracking();
     resetGains();
     crossfadingRef.current = false;
-    setIsCrossfading(false);
     modeRef.current = "idle";
     setIsPlaying(false);
     setProgress(0);
@@ -645,7 +554,6 @@ export function useAudioEngine(callbacks: AudioEngineCallbacks) {
 
   return {
     playClip,
-    preloadClip,
     playAlbum,
     playAlbumTrack,
     pause,
@@ -654,11 +562,9 @@ export function useAudioEngine(callbacks: AudioEngineCallbacks) {
     isPlaying,
     isBuffering,
     isNormalizing,
-    loadError,
     progress,
     albumTrackIndex,
     analyserNode,
-    isCrossfading,
     normalizationEnabled,
     setNormalizationEnabled,
   };

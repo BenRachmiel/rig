@@ -1,17 +1,14 @@
 "use client";
 
-import { Suspense, useReducer, useEffect, useCallback, useRef, useState } from "react";
+import { Suspense, useReducer, useEffect, useCallback, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import { reverbReducer, initialState } from "./reducer";
 import { usePlayback } from "@/contexts/playback-context";
 import { usePlaybackStore } from "@/stores/playback-store";
 import { useAudioReactivity } from "@/hooks/use-audio-reactivity";
 import { reverbApi } from "@/lib/reverb-api";
-import { useSettingsStore } from "@/stores/settings-store";
-import { computeGainFromBuffer, fetchAudioBuffer, normCacheKey } from "@/lib/normalize";
 import { ClipUI } from "@/components/reverb/clip-ui";
 import { AlbumUI } from "@/components/reverb/album-ui";
-import { RevealUI } from "@/components/reverb/reveal-ui";
 
 export default function ReverbPage() {
   return (
@@ -38,7 +35,11 @@ function ReverbPageInner() {
       onClipEnd: () => dispatch({ type: "SKIP" }),
       onCrossfadeStart: () => dispatch({ type: "SKIP" }),
       onAlbumTrackChange: (index) => dispatch({ type: "TRACK_CHANGE", index }),
-      onAlbumEnd: () => dispatch({ type: "REVEAL" }),
+      onAlbumEnd: () => {
+        engine.stop();
+        usePlaybackStore.getState().clearPlayback();
+        dispatch({ type: "ALBUM_FINISHED" });
+      },
     });
     usePlaybackStore.getState().hideMiniPlayer();
 
@@ -107,12 +108,6 @@ function ReverbPageInner() {
     if (state.needsRefill) fetchPool();
   }, [state.needsRefill, fetchPool]);
 
-  const offlineCacheEnabled = useSettingsStore((s) => s.offlineCacheEnabled);
-
-  // Pre-cache upcoming clip URLs when pool loads (if caching enabled)
-  // Pre-caching disabled: playClip does its own single-fetch (download + normalize).
-  // Offline pre-caching can't work reliably with random clip offsets from makeClip.
-
   useEffect(() => {
     if (state.phase !== "clip" || !state.currentClip) return;
     engine.playClip(state.currentClip);
@@ -154,38 +149,7 @@ function ReverbPageInner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.album]);
 
-  // Background-cache album tracks sequentially when caching enabled
-  useEffect(() => {
-    if (!offlineCacheEnabled || state.phase !== "album" || !state.album) return;
-    let cancelled = false;
 
-    (async () => {
-      const songs = state.album!.song;
-      for (let i = 1; i < songs.length; i++) {
-        if (cancelled) break;
-        try {
-          const url = reverbApi.streamUrl(songs[i].id);
-          const { buffer } = await fetchAudioBuffer(url);
-          if (!cancelled) {
-            await computeGainFromBuffer(normCacheKey(songs[i].id, false), buffer);
-          }
-        } catch { /* non-critical */ }
-      }
-    })();
-
-    return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.album, offlineCacheEnabled]);
-
-  useEffect(() => {
-    if (state.phase !== "reveal" || !state.album) return;
-    engine.stop();
-    usePlaybackStore.getState().clearPlayback();
-    for (const song of state.album.song) {
-      reverbApi.scrobble(song.id);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.phase]);
 
   // Sync album track changes to playback store
   useEffect(() => {
@@ -207,37 +171,11 @@ function ReverbPageInner() {
 
   const handleSkip = useCallback(() => dispatch({ type: "SKIP" }), []);
   const handleBack = useCallback(() => dispatch({ type: "BACK" }), []);
-  const [coverColor, setCoverColor] = useState<string | null>(null);
-  const coverImgRef = useRef<HTMLImageElement | null>(null);
 
   const handleCommit = useCallback(() => {
     engine.stop();
     dispatch({ type: "COMMIT" });
-    setCoverColor(null);
-
-    // Cancel previous in-flight cover preload
-    if (coverImgRef.current) coverImgRef.current.onload = null;
-
-    if (state.currentClip) {
-      const coverUrl = reverbApi.coverArtUrl(state.currentClip.song.albumId, 512);
-      const img = new window.Image();
-      img.crossOrigin = "anonymous";
-      coverImgRef.current = img;
-      img.onload = () => {
-        try {
-          const c = document.createElement("canvas");
-          c.width = c.height = 1;
-          const ctx = c.getContext("2d");
-          if (ctx) {
-            ctx.drawImage(img, 0, 0, 1, 1);
-            const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data;
-            setCoverColor(`rgb(${r},${g},${b})`);
-          }
-        } catch { /* tainted canvas is fine — art is still cached */ }
-      };
-      img.src = coverUrl;
-    }
-  }, [engine, state.currentClip]);
+  }, [engine]);
   const handleAbandon = useCallback(() => {
     engine.stop();
     usePlaybackStore.getState().clearPlayback();
@@ -323,24 +261,12 @@ function ReverbPageInner() {
               progress={engine.progress}
               isPlaying={engine.isPlaying}
               onPauseToggle={handlePauseToggle}
-              onTrackSelect={(i) => engine.playAlbumTrack(i)}
               onNextTrack={() => engine.playAlbumTrack(engine.albumTrackIndex + 1)}
               onPrevTrack={() => engine.playAlbumTrack(Math.max(0, engine.albumTrackIndex - 1))}
               onAbandon={handleAbandon}
               analyserNode={engine.analyserNode}
               normalizationEnabled={engine.normalizationEnabled}
               onNormalizationToggle={() => engine.setNormalizationEnabled(!engine.normalizationEnabled)}
-            />
-          </div>
-        )}
-
-        {/* Reveal */}
-        {state.phase === "reveal" && state.album && (
-          <div className="w-full animate-in fade-in duration-500">
-            <RevealUI
-              album={state.album}
-              onRestart={handleRestart}
-              dominantColor={coverColor}
             />
           </div>
         )}

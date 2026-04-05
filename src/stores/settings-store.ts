@@ -3,10 +3,7 @@ import { persist } from "zustand/middleware";
 
 export interface Settings {
   theme: "dark" | "light" | "system";
-  landingPage: "/" | "/download" | "/library" | "/reverb" | "/credentials";
   normalizationEnabled: boolean;
-  offlineCacheEnabled: boolean;
-  offlineCacheMaxMB: number;
 }
 
 interface SettingsStore extends Settings {
@@ -17,10 +14,7 @@ export const useSettingsStore = create<SettingsStore>()(
   persist(
     (set) => ({
       theme: "dark",
-      landingPage: "/download",
       normalizationEnabled: true,
-      offlineCacheEnabled: false,
-      offlineCacheMaxMB: 200,
       set: (key, value) => set({ [key]: value }),
     }),
     {

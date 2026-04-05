@@ -1,7 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { Settings as SettingsIcon, Trash2 } from "lucide-react";
+import { Settings as SettingsIcon } from "lucide-react";
 import {
   Sheet,
   SheetContent,
@@ -9,17 +8,8 @@ import {
   SheetTitle,
   SheetDescription,
 } from "@/components/ui/sheet";
-import { Button } from "@/components/ui/button";
 import { useSettingsStore, type Settings } from "@/stores/settings-store";
 import { useNavStore } from "@/stores/nav-store";
-
-const landingPages: { value: Settings["landingPage"]; label: string }[] = [
-  { value: "/", label: "Home" },
-  { value: "/download", label: "Download" },
-  { value: "/library", label: "Library" },
-  { value: "/reverb", label: "Reverb" },
-  { value: "/credentials", label: "Keys" },
-];
 
 const themes: { value: Settings["theme"]; label: string }[] = [
   { value: "dark", label: "Dark" },
@@ -86,42 +76,6 @@ export function SettingsSheet() {
   const settings = useSettingsStore();
   const set = settings.set;
 
-  const [cacheSize, setCacheSize] = useState<number | null>(null);
-
-  const refreshCacheSize = useCallback(async () => {
-    if (!("caches" in window)) return;
-    try {
-      const cache = await caches.open("reverb-audio-v1");
-      const keys = await cache.keys();
-      let total = 0;
-      for (const req of keys) {
-        const res = await cache.match(req);
-        if (res) {
-          const buf = await res.clone().arrayBuffer();
-          total += buf.byteLength;
-        }
-      }
-      setCacheSize(total);
-    } catch {
-      setCacheSize(null);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (open) refreshCacheSize();
-  }, [open, refreshCacheSize]);
-
-  const clearCache = useCallback(async () => {
-    if (!("caches" in window)) return;
-    await caches.delete("reverb-audio-v1");
-    setCacheSize(0);
-  }, []);
-
-  const formatBytes = (bytes: number) => {
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
-    return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
-  };
-
   return (
     <Sheet open={open} onOpenChange={(v) => !v && close()}>
       <SheetContent side="bottom" showCloseButton={false}>
@@ -139,23 +93,13 @@ export function SettingsSheet() {
             <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
               General
             </h3>
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-sm">Landing page</span>
-                <ToggleGroup
-                  options={landingPages}
-                  value={settings.landingPage}
-                  onChange={(v) => set("landingPage", v)}
-                />
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm">Theme</span>
-                <ToggleGroup
-                  options={themes}
-                  value={settings.theme}
-                  onChange={(v) => set("theme", v)}
-                />
-              </div>
+            <div className="flex items-center justify-between">
+              <span className="text-sm">Theme</span>
+              <ToggleGroup
+                options={themes}
+                value={settings.theme}
+                onChange={(v) => set("theme", v)}
+              />
             </div>
           </section>
 
@@ -170,61 +114,6 @@ export function SettingsSheet() {
                 checked={settings.normalizationEnabled}
                 onChange={(v) => set("normalizationEnabled", v)}
               />
-            </div>
-          </section>
-
-          {/* Storage */}
-          <section className="space-y-3">
-            <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-              Storage
-            </h3>
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-sm">Offline audio cache</span>
-                <Toggle
-                  checked={settings.offlineCacheEnabled}
-                  onChange={(v) => set("offlineCacheEnabled", v)}
-                />
-              </div>
-              {settings.offlineCacheEnabled && (
-                <>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-muted-foreground">
-                      Max size
-                    </span>
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="range"
-                        min={50}
-                        max={2000}
-                        step={50}
-                        value={settings.offlineCacheMaxMB}
-                        onChange={(e) =>
-                          set("offlineCacheMaxMB", Number(e.target.value))
-                        }
-                        className="w-24 accent-primary"
-                      />
-                      <span className="text-xs text-muted-foreground w-14 text-right">
-                        {settings.offlineCacheMaxMB} MB
-                      </span>
-                    </div>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-muted-foreground">
-                      Used: {cacheSize !== null ? formatBytes(cacheSize) : "--"}
-                    </span>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={clearCache}
-                      className="text-destructive h-7 px-2"
-                    >
-                      <Trash2 className="size-3.5 mr-1" />
-                      Clear
-                    </Button>
-                  </div>
-                </>
-              )}
             </div>
           </section>
         </div>

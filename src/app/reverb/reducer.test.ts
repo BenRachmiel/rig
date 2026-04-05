@@ -182,15 +182,35 @@ describe("reverbReducer", () => {
     });
   });
 
-  describe("REVEAL", () => {
-    it("transitions from album to reveal", () => {
+  describe("ALBUM_FINISHED", () => {
+    it("returns to clip mode when pool has songs", () => {
+      const songs = [fakeSong({ id: "s1" }), fakeSong({ id: "s2" })];
+      let state = reverbReducer(initialState, { type: "POOL_LOADED", songs });
+      state = reverbReducer(state, { type: "COMMIT" });
+      state = reverbReducer(state, { type: "ALBUM_LOADED", album: fakeAlbum() });
+      expect(state.phase).toBe("album");
+
+      const next = reverbReducer(state, { type: "ALBUM_FINISHED" });
+      expect(next.phase).toBe("clip");
+      expect(next.currentClip).toBeTruthy();
+      expect(next.album).toBeNull();
+    });
+
+    it("restarts when pool is empty", () => {
       const state: ReverbState = {
         ...initialState,
         phase: "album",
         album: fakeAlbum(),
+        pool: [],
+        poolIndex: 0,
       };
-      const next = reverbReducer(state, { type: "REVEAL" });
-      expect(next.phase).toBe("reveal");
+      const next = reverbReducer(state, { type: "ALBUM_FINISHED" });
+      expect(next.phase).toBe("loading");
+    });
+
+    it("is no-op outside album phase", () => {
+      const state = { ...initialState, phase: "clip" as const };
+      expect(reverbReducer(state, { type: "ALBUM_FINISHED" })).toBe(state);
     });
   });
 
@@ -198,7 +218,7 @@ describe("reverbReducer", () => {
     it("resets to loading state", () => {
       const state: ReverbState = {
         ...initialState,
-        phase: "reveal",
+        phase: "album",
         album: fakeAlbum(),
         pool: [fakeSong()],
       };
@@ -235,7 +255,7 @@ describe("reverbReducer", () => {
       expect(next.phase).toBe("loading");
     });
 
-    it("is no-op outside album/reveal phase", () => {
+    it("is no-op outside album phase", () => {
       const state = { ...initialState, phase: "clip" as const };
       expect(reverbReducer(state, { type: "ABANDON_ALBUM" })).toBe(state);
     });
@@ -272,12 +292,6 @@ describe("reverbReducer", () => {
       expect(next).toBe(state);
     });
 
-    it("is no-op when phase is reveal", () => {
-      const state: ReverbState = { ...initialState, phase: "reveal", album: fakeAlbum() };
-      const songs = [fakeSong()];
-      const next = reverbReducer(state, { type: "POOL_LOADED", songs });
-      expect(next).toBe(state);
-    });
   });
 
   describe("DIRECT_ALBUM", () => {

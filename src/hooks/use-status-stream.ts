@@ -3,12 +3,7 @@
 import { useEffect, useRef } from "react";
 import { useAppStore } from "@/stores/app-store";
 import { statusStreamUrl } from "@/lib/gain-api";
-import type {
-  JobUpdateEvent,
-  TrackUpdateEvent,
-  TrackProgressEvent,
-  LogEvent,
-} from "@/types/api";
+import type { JobUpdateEvent, TrackUpdateEvent } from "@/types/api";
 
 export function useStatusStream() {
   const esRef = useRef<EventSource | null>(null);
@@ -32,20 +27,6 @@ export function useStatusStream() {
         if (id) useAppStore.getState().setLastEventId(id);
         const data: TrackUpdateEvent = JSON.parse(e.data);
         useAppStore.getState().handleTrackUpdate(data);
-      });
-
-      es.addEventListener("track_progress", (e: MessageEvent) => {
-        const id = parseInt(e.lastEventId);
-        if (id) useAppStore.getState().setLastEventId(id);
-        const data: TrackProgressEvent = JSON.parse(e.data);
-        useAppStore.getState().handleTrackProgress(data);
-      });
-
-      es.addEventListener("log", (e: MessageEvent) => {
-        const id = parseInt(e.lastEventId);
-        if (id) useAppStore.getState().setLastEventId(id);
-        const data: LogEvent = JSON.parse(e.data);
-        useAppStore.getState().addLog(data.message);
       });
 
       es.onerror = () => {

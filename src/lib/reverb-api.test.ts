@@ -104,17 +104,6 @@ describe("reverbApi", () => {
     });
   });
 
-  describe("scrobble", () => {
-    it("fires fetch and does not throw", () => {
-      const mockFetch = vi.fn().mockResolvedValue(new Response("", { status: 200 }));
-      vi.stubGlobal("fetch", mockFetch);
-
-      // scrobble is fire-and-forget — should not throw
-      reverbApi.scrobble("song1");
-      expect(mockFetch).toHaveBeenCalledWith("/api/reverb/scrobble?id=song1");
-    });
-  });
-
   describe("getLyrics", () => {
     it("returns structured lyrics for a song", async () => {
       const lyrics = [

@@ -1,10 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { Download, Library, Headphones, KeyRound } from "lucide-react";
-import { useSettingsStore } from "@/stores/settings-store";
 
 const cards = [
   { href: "/download", label: "Download", icon: Download },
@@ -14,24 +11,6 @@ const cards = [
 ] as const;
 
 export default function Home() {
-  const router = useRouter();
-  const landingPage = useSettingsStore((s) => s.landingPage);
-  const [ready, setReady] = useState(false);
-
-  useEffect(() => {
-    // Single tick delay — persist rehydrates synchronously from localStorage
-    // but the store selector returns the default on the first render.
-    // By the next tick the persisted value is in place.
-    const id = requestAnimationFrame(() => setReady(true));
-    return () => cancelAnimationFrame(id);
-  }, []);
-
-  useEffect(() => {
-    if (ready && landingPage !== "/") router.replace(landingPage);
-  }, [ready, router, landingPage]);
-
-  if (!ready || landingPage !== "/") return null;
-
   return (
     <div className="min-h-full flex flex-col items-center justify-center p-6 gap-8">
       <div className="flex flex-col items-center gap-1">

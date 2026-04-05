@@ -120,9 +120,6 @@
 
 /* Reverb */
 :root {
-  --rv-bass: 0;
-  --rv-mid: 0;
-  --rv-treble: 0;
   --rv-energy: 0;
   --rv-peak: 0;
   --rv-fg-oklch: 0.145 0 0;
@@ -130,11 +127,6 @@
 
 .dark {
   --rv-fg-oklch: 0.985 0 0;
-}
-
-@keyframes rv-reveal {
-  from { transform: scale(0.85); opacity: 0; filter: blur(20px); }
-  to   { transform: scale(1);    opacity: 1; filter: blur(0);    }
 }
 
 @keyframes wall-pan {

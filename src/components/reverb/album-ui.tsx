@@ -17,7 +17,6 @@ interface AlbumUIProps {
   progress: number;
   isPlaying: boolean;
   onPauseToggle: () => void;
-  onTrackSelect: (index: number) => void;
   onNextTrack: () => void;
   onPrevTrack: () => void;
   onAbandon?: () => void;

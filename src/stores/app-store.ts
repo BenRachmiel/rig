@@ -7,7 +7,6 @@ import type {
   JobState,
   JobUpdateEvent,
   TrackUpdateEvent,
-  TrackProgressEvent,
 } from "@/types/api";
 import * as gainApi from "@/lib/gain-api";
 
@@ -35,11 +34,9 @@ interface AppState {
   // Jobs
   jobs: Map<string, JobState>;
   pendingJobId: string | null;
-  sentTrackCount: number;
 
   // SSE
   lastEventId: number;
-  logs: string[];
 
   // UI
   dockOpen: boolean;
@@ -60,11 +57,9 @@ interface AppState {
   queueJob: (artist: string, album: string) => Promise<void>;
   handleJobUpdate: (evt: JobUpdateEvent) => void;
   handleTrackUpdate: (evt: TrackUpdateEvent) => void;
-  handleTrackProgress: (evt: TrackProgressEvent) => void;
   clearCompletedJobs: () => Promise<void>;
   loadExistingJobs: () => Promise<void>;
   setLastEventId: (id: number) => void;
-  addLog: (msg: string) => void;
 
   // UI
   setDockOpen: (open: boolean) => void;
@@ -88,9 +83,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   totalTracks: 0,
   jobs: new Map(),
   pendingJobId: null,
-  sentTrackCount: 0,
   lastEventId: 0,
-  logs: [],
   dockOpen: false,
   dockTab: "preview",
 
@@ -142,20 +135,16 @@ export const useAppStore = create<AppState>((set, get) => ({
       resolvedCount: 0,
       totalTracks: 0,
       pendingJobId: null,
-      sentTrackCount: 0,
     });
   },
 
   setResolveMeta: (meta) => set({ resolveMeta: meta, totalTracks: meta.total }),
 
   addResolvedTrack: (track) => {
-    const { pendingJobId, sentTrackCount } = get();
+    const { pendingJobId } = get();
     if (pendingJobId) {
       gainApi.appendTracks(pendingJobId, [track]);
-      set({
-        sentTrackCount: sentTrackCount + 1,
-        resolvedCount: get().resolvedCount + 1,
-      });
+      set({ resolvedCount: get().resolvedCount + 1 });
     } else {
       set((s) => {
         const arrayIndex = s.resolvedTracks.length;
@@ -241,7 +230,6 @@ export const useAppStore = create<AppState>((set, get) => ({
       return {
         jobs,
         pendingJobId: resolved ? null : jobId,
-        sentTrackCount: selectedTracks.length,
         dockTab: "jobs" as const,
       };
     });
@@ -259,9 +247,6 @@ export const useAppStore = create<AppState>((set, get) => ({
         if (evt.track_count != null) updated.track_count = evt.track_count;
         if (evt.status === "done" || evt.status === "error") {
           updated.tracks_done = updated.track_count;
-          updated.trackPhase = undefined;
-          updated.trackPct = undefined;
-          updated.trackIndex = undefined;
         }
         jobs.set(evt.job_id, updated);
       } else if (evt.artist) {
@@ -286,24 +271,6 @@ export const useAppStore = create<AppState>((set, get) => ({
         jobs.set(evt.job_id, {
           ...job,
           tracks_done: job.tracks_done + 1,
-          trackPhase: undefined,
-          trackPct: undefined,
-          trackIndex: undefined,
-        });
-      }
-      return { jobs };
-    }),
-
-  handleTrackProgress: (evt) =>
-    set((s) => {
-      const jobs = new Map(s.jobs);
-      const job = jobs.get(evt.job_id);
-      if (job) {
-        jobs.set(evt.job_id, {
-          ...job,
-          trackPhase: evt.phase,
-          trackPct: evt.pct,
-          trackIndex: evt.index,
         });
       }
       return { jobs };
@@ -330,8 +297,6 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   setLastEventId: (id) => set({ lastEventId: id }),
-  addLog: (msg) =>
-    set((s) => ({ logs: [...s.logs.slice(-499), msg] })),
 
   setDockOpen: (open) => set({ dockOpen: open }),
   setDockTab: (tab) => set({ dockTab: tab }),

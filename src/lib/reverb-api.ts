@@ -35,10 +35,6 @@ export const reverbApi = {
   coverArtUrl: (id: string, size = 256): string =>
     `${API}/getCoverArt?id=${encodeURIComponent(id)}&size=${size}`,
 
-  scrobble: (id: string): void => {
-    fetch(`${API}/scrobble?id=${encodeURIComponent(id)}`).catch(() => {});
-  },
-
   getLyrics: async (songId: string): Promise<StructuredLyric[]> => {
     const data = await json<SubsonicResponse<{ lyricsList?: { structuredLyrics?: StructuredLyric[] } }>>(
       `/getLyricsBySongId?id=${encodeURIComponent(songId)}`,

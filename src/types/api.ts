@@ -40,12 +40,9 @@ export interface JobState {
   current_track: number | null;
   track_count: number;
   tracks_done: number;
-  trackPhase?: "download" | "transcode";
-  trackPct?: number;
-  trackIndex?: number;
 }
 
-export type Job = Omit<JobState, "trackPhase" | "trackPct" | "trackIndex">;
+export type Job = JobState;
 
 export interface JobUpdateEvent {
   job_id: string;
@@ -63,17 +60,6 @@ export interface TrackUpdateEvent {
   error?: string;
 }
 
-export interface TrackProgressEvent {
-  job_id: string;
-  index: number;
-  phase: "download" | "transcode";
-  pct: number;
-}
-
-export interface LogEvent {
-  message: string;
-  job_id?: string;
-}
 
 // Preamp types
 export interface Credential {
