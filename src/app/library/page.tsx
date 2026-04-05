@@ -1,11 +1,10 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
-import { RefreshCw, ChevronRight, Wallpaper } from "lucide-react";
+import { RefreshCw, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Toggle } from "@/components/ui/toggle";
 import {
   Collapsible,
   CollapsibleTrigger,
@@ -42,29 +41,6 @@ const ISSUE_LABELS: Record<IssueKey, string> = {
   songs_zero_duration: "Songs with zero duration",
 };
 
-const BG_STORAGE_KEY = "library-bg-enabled";
-
-function useLocalStorageToggle(key: string, defaultValue: boolean) {
-  const [value, setValue] = useState(defaultValue);
-  const initialized = useRef(false);
-
-  useEffect(() => {
-    const stored = localStorage.getItem(key);
-    if (stored !== null) setValue(stored === "true");
-    initialized.current = true;
-  }, [key]);
-
-  const toggle = useCallback(() => {
-    setValue((prev) => {
-      const next = !prev;
-      localStorage.setItem(key, String(next));
-      return next;
-    });
-  }, [key]);
-
-  return [value, toggle, initialized.current] as const;
-}
-
 export default function LibraryPage() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [scan, setScan] = useState<ScanStatus>({ scanning: false, count: 0 });
@@ -73,8 +49,6 @@ export default function LibraryPage() {
   const [issueOffset, setIssueOffset] = useState(0);
   const [loadingIssue, setLoadingIssue] = useState(false);
   const [artists, setArtists] = useState<LibraryEntry[]>([]);
-  const [coverUrls, setCoverUrls] = useState<string[]>([]);
-  const [bgEnabled, toggleBg] = useLocalStorageToggle(BG_STORAGE_KEY, true);
   const [wizardIssue, setWizardIssue] = useState<IssueKey | null>(null);
   const [artistsOpen, setArtistsOpen] = useState(false);
   const [qualityOpen, setQualityOpen] = useState(false);
@@ -111,48 +85,6 @@ export default function LibraryPage() {
     }, 2000);
     return () => clearInterval(id);
   }, [scan.scanning, activeIssue]);
-
-  // Stream album art background wall — push URLs one at a time for smooth fade-in
-  useEffect(() => {
-    if (artists.length === 0) return;
-    let cancelled = false;
-
-    async function loadCovers() {
-      const shuffled = [...artists]
-        .sort(() => Math.random() - 0.5)
-        .slice(0, 10);
-      let count = 0;
-      const BATCH = 4;
-
-      for (let i = 0; i < shuffled.length; i += BATCH) {
-        if (cancelled || count >= 24) return;
-        const batch = shuffled.slice(i, i + BATCH);
-        const results = await Promise.allSettled(
-          batch.map((a) => libraryApi.browse(a.name)),
-        );
-        const batchUrls: string[] = [];
-        for (const result of results) {
-          if (cancelled || count >= 24) break;
-          if (result.status !== "fulfilled") continue;
-          const albums = result.value.entries.filter((e) => e.type === "directory");
-          for (const album of albums.slice(0, 3)) {
-            if (count >= 24) break;
-            batchUrls.push(libraryApi.coverDirUrl(album.path));
-            count++;
-          }
-        }
-        if (cancelled) return;
-        if (batchUrls.length > 0) {
-          setCoverUrls((prev) => [...prev, ...batchUrls]);
-        }
-      }
-    }
-
-    loadCovers();
-    return () => {
-      cancelled = true;
-    };
-  }, [artists]);
 
   const fetchIssues = async (type: IssueKey, offset: number) => {
     setLoadingIssue(true);
@@ -223,49 +155,9 @@ export default function LibraryPage() {
 
   const totalIssues = issues.reduce((sum, i) => sum + i.count, 0);
 
-  // Build wall: duplicate URLs to fill columns, then duplicate the row block for seamless looping
-  const COLS = 8;
-  const ROWS = 5;
-  const cellCount = COLS * ROWS;
-  const wallUrls =
-    coverUrls.length > 0
-      ? Array.from(
-          { length: cellCount },
-          (_, i) => coverUrls[i % coverUrls.length],
-        )
-      : [];
-
   return (
     <>
-      {/* Animated album art background wall */}
-      {bgEnabled && wallUrls.length > 0 && (
-        <div className="fixed inset-0 -z-10 overflow-hidden pointer-events-none opacity-[0.12]">
-          <div
-            className="animate-wall-pan grid grid-cols-4 md:grid-cols-8 w-full"
-          >
-            {/* Render two copies of the grid for seamless looping */}
-            {[...wallUrls, ...wallUrls].map((url, i) => (
-              <img
-                key={i}
-                src={url}
-                alt=""
-                loading="lazy"
-                className="w-full aspect-square object-cover opacity-0 transition-opacity duration-700"
-                onLoad={(e) => {
-                  (e.target as HTMLImageElement).classList.remove("opacity-0");
-                  (e.target as HTMLImageElement).classList.add("opacity-100");
-                }}
-                onError={(e) => {
-                  (e.target as HTMLImageElement).style.visibility = "hidden";
-                }}
-              />
-            ))}
-          </div>
-        </div>
-      )}
-
       <div className="max-w-4xl mx-auto px-4 py-4 md:px-6 md:py-6 flex flex-col gap-6">
-        {/* Header with rescan button and background toggle */}
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-xl font-semibold tracking-tight">
@@ -278,17 +170,6 @@ export default function LibraryPage() {
             </p>
           </div>
           <div className="flex items-center gap-2">
-            {coverUrls.length > 0 && (
-              <Toggle
-                pressed={bgEnabled}
-                onPressedChange={toggleBg}
-                variant="outline"
-                size="sm"
-                aria-label="Toggle background art"
-              >
-                <Wallpaper className="h-4 w-4" />
-              </Toggle>
-            )}
             <Button onClick={handleScan} disabled={scan.scanning}>
               <RefreshCw
                 className={`h-4 w-4 mr-1.5 ${scan.scanning ? "animate-spin" : ""}`}

@@ -3,7 +3,8 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { use } from "react";
 import Link from "next/link";
-import { ChevronRight, Save, Image, Upload, Search, Headphones } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { ChevronRight, Save, Image, Upload, Search, Headphones, Pencil, Check, X, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,6 +25,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import * as libraryApi from "@/lib/library-api";
+import { safePathSegment } from "@/lib/safe-path";
 import type { LibraryEntry, TagData, MusicBrainzResult } from "@/types/api";
 
 interface TrackWithTags {
@@ -39,11 +41,15 @@ export default function AlbumPage({
   params: Promise<{ artist: string; album: string }>;
 }) {
   const { artist, album } = use(params);
+  const router = useRouter();
   const artistName = decodeURIComponent(artist);
   const albumName = decodeURIComponent(album);
   const basePath = `${artistName}/${albumName}`;
 
   const [tracks, setTracks] = useState<TrackWithTags[]>([]);
+  const [editingArtist, setEditingArtist] = useState(false);
+  const [newArtistName, setNewArtistName] = useState(artistName);
+  const [changingArtist, setChangingArtist] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<Set<string>>(new Set());
   const [coverSrc, setCoverSrc] = useState<string | null>(null);
@@ -209,6 +215,30 @@ export default function AlbumPage({
     }
   };
 
+  const changeArtist = async () => {
+    const trimmed = newArtistName.trim();
+    if (!trimmed || trimmed === artistName) {
+      setEditingArtist(false);
+      setNewArtistName(artistName);
+      return;
+    }
+    setChangingArtist(true);
+    try {
+      for (const track of tracks) {
+        await libraryApi.writeTags(track.entry.path, { artist: trimmed });
+      }
+      const safeName = safePathSegment(trimmed);
+      await libraryApi.moveEntry(basePath, `${safeName}/${albumName}`);
+      toast.success(`Moved album to "${trimmed}"`);
+      router.replace(
+        `/library/${encodeURIComponent(safeName)}/${encodeURIComponent(albumName)}`
+      );
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to change artist");
+      setChangingArtist(false);
+    }
+  };
+
   const dirtyCount = tracks.filter((t) => t.dirty).length;
 
   const getVal = (track: TrackWithTags, field: string) => {
@@ -226,12 +256,59 @@ export default function AlbumPage({
               Library
             </Link>
             <ChevronRight className="h-3 w-3" />
-            <Link
-              href={`/library/${encodeURIComponent(artistName)}`}
-              className="hover:text-foreground transition-colors"
-            >
-              {artistName}
-            </Link>
+            {editingArtist ? (
+              <span className="inline-flex items-center gap-1">
+                <Input
+                  value={newArtistName}
+                  onChange={(e) => setNewArtistName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") changeArtist();
+                    if (e.key === "Escape") {
+                      setEditingArtist(false);
+                      setNewArtistName(artistName);
+                    }
+                  }}
+                  className="h-6 text-sm w-48 px-1"
+                  autoFocus
+                  disabled={changingArtist}
+                />
+                {changingArtist ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <>
+                    <button type="button" onClick={changeArtist} className="hover:text-foreground">
+                      <Check className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingArtist(false);
+                        setNewArtistName(artistName);
+                      }}
+                      className="hover:text-foreground"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </>
+                )}
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1">
+                <Link
+                  href={`/library/${encodeURIComponent(artistName)}`}
+                  className="hover:text-foreground transition-colors"
+                >
+                  {artistName}
+                </Link>
+                <button
+                  type="button"
+                  onClick={() => setEditingArtist(true)}
+                  className="hover:text-foreground"
+                >
+                  <Pencil className="h-3 w-3" />
+                </button>
+              </span>
+            )}
             <ChevronRight className="h-3 w-3" />
             <span className="text-foreground">{albumName}</span>
           </nav>
