@@ -23,7 +23,7 @@ export async function GET(req: NextRequest) {
       { status: 502 },
     );
   }
-  const releases: unknown[] = data.releases ?? [];
+  const releases = (data.releases ?? []) as unknown[];
 
   if (releases.length === 0) {
     return NextResponse.json({ error: "No release found" }, { status: 404 });

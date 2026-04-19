@@ -23,7 +23,7 @@ export async function GET(req: NextRequest) {
       { status: 502 },
     );
   }
-  const releases: unknown[] = data.releases ?? [];
+  const releases = (data.releases ?? []) as unknown[];
 
   const results = releases.map((r: unknown) => {
     const rel = r as Record<string, unknown>;
