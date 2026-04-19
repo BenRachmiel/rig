@@ -80,6 +80,8 @@ export function useAudioEngine(callbacks: AudioEngineCallbacks) {
   const albumIndexRef = useRef(0);
   const modeRef = useRef<"clip" | "album" | "idle">("idle");
   const loadGenRef = useRef(0);
+  const prebufferRef = useRef<{ index: number; gainValue: number } | null>(null);
+  const prebufferGenRef = useRef(0);
 
   const [isPlaying, setIsPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -191,6 +193,10 @@ export function useAudioEngine(callbacks: AudioEngineCallbacks) {
 
   const getActive = useCallback(
     () => (activeRef.current === "a" ? audioA.current : audioB.current),
+    [],
+  );
+  const getInactive = useCallback(
+    () => (activeRef.current === "a" ? audioB.current : audioA.current),
     [],
   );
   const getActiveGain = useCallback(
@@ -356,6 +362,8 @@ export function useAudioEngine(callbacks: AudioEngineCallbacks) {
       activeRef.current = activeRef.current === "a" ? "b" : "a";
 
       modeRef.current = "clip";
+      prebufferRef.current = null;
+      ++prebufferGenRef.current;
       clipRef.current = clip;
       crossfadeFiredRef.current = false;
       if (clipTimerRef.current) clearTimeout(clipTimerRef.current);
@@ -406,108 +414,94 @@ export function useAudioEngine(callbacks: AudioEngineCallbacks) {
     [ensureAudioContext, getActive, getActiveGain, loadTrack, startProgressTracking, stopProgressTracking],
   );
 
-  const playAlbum = useCallback(
-    async (songs: SongID3[], startIndex: number) => {
-      ensureAudioContext();
-      if (audioCtxRef.current?.state === "suspended") {
-        await audioCtxRef.current.resume();
-      }
+  /** Prebuffer the next album track on the inactive audio element. */
+  const prebufferNext = useCallback(async () => {
+    const nextIdx = albumIndexRef.current + 1;
+    if (nextIdx >= albumSongsRef.current.length) return;
 
-      modeRef.current = "album";
-      albumSongsRef.current = songs;
-      albumIndexRef.current = startIndex;
-      const gen = ++loadGenRef.current;
+    const gen = ++prebufferGenRef.current;
+    const song = albumSongsRef.current[nextIdx];
+    const el = getInactive()!;
 
-      if (clipTimerRef.current) clearTimeout(clipTimerRef.current);
-      if (taperTimerRef.current) clearTimeout(taperTimerRef.current);
+    try {
+      const { buffer, blobUrl } = await fetchAudioBuffer(reverbApi.streamUrl(song.id));
+      if (prebufferGenRef.current !== gen) { URL.revokeObjectURL(blobUrl); return; }
 
-      resetGains();
+      const gainValue = normalizationRef.current
+        ? await computeGainFromBuffer(normCacheKey(song.id, false), buffer)
+        : 1;
+      if (prebufferGenRef.current !== gen) { URL.revokeObjectURL(blobUrl); return; }
 
-      const el = getActive()!;
+      await waitForLoad(el, blobUrl);
+      if (prebufferGenRef.current !== gen) return;
 
-      const playTrack = async (idx: number) => {
-        if (idx >= songs.length) {
-          setIsPlaying(false);
-          stopProgressTracking();
-          cbRef.current.onAlbumEnd();
-          return;
-        }
-
-        albumIndexRef.current = idx;
-        setAlbumTrackIndex(idx);
-        cbRef.current.onAlbumTrackChange(idx);
-
-        const result = await loadTrack(el, reverbApi.streamUrl(songs[idx].id), normCacheKey(songs[idx].id, false), gen);
-        if (result === "stale") return;
-        if (result === "error") { await playTrack(idx + 1); return; }
-
-        await el.play();
-        setIsPlaying(true);
-        setProgress(0);
-        startProgressTracking();
-
-        if ("mediaSession" in navigator) {
-          navigator.mediaSession.metadata = new MediaMetadata({
-            title: songs[idx].title,
-            artist: songs[idx].artist,
-            album: songs[idx].album,
-          });
-          navigator.mediaSession.setActionHandler("play", () => resume());
-          navigator.mediaSession.setActionHandler("pause", () => pause());
-          navigator.mediaSession.setActionHandler("nexttrack", () =>
-            playTrack(albumIndexRef.current + 1),
-          );
-          navigator.mediaSession.setActionHandler("previoustrack", () =>
-            playTrack(Math.max(0, albumIndexRef.current - 1)),
-          );
-        }
-      };
-
-      el.onended = () => playTrack(albumIndexRef.current + 1);
-      await playTrack(startIndex);
-    },
-    [ensureAudioContext, getActive, resetGains, loadTrack, startProgressTracking, stopProgressTracking],
-  );
+      prebufferRef.current = { index: nextIdx, gainValue };
+    } catch {
+      // Prebuffer failed — will load on demand when track is requested
+    }
+  }, [getInactive]);
 
   const playAlbumTrack = useCallback(
     async (index: number) => {
       if (modeRef.current !== "album") return;
+      if (index >= albumSongsRef.current.length) {
+        setIsPlaying(false);
+        stopProgressTracking();
+        cbRef.current.onAlbumEnd();
+        return;
+      }
+
       const gen = ++loadGenRef.current;
-      const el = getActive()!;
-      el.onended = () => {
-        const next = albumIndexRef.current + 1;
-        if (next >= albumSongsRef.current.length) {
-          setIsPlaying(false);
-          stopProgressTracking();
-          cbRef.current.onAlbumEnd();
-          return;
-        }
-        playAlbumTrack(next);
-      };
+      ++prebufferGenRef.current; // cancel in-flight prebuffer
 
       albumIndexRef.current = index;
       setAlbumTrackIndex(index);
       cbRef.current.onAlbumTrackChange(index);
 
       const song = albumSongsRef.current[index];
-      const result = await loadTrack(el, reverbApi.streamUrl(song.id), normCacheKey(song.id, false), gen);
-      if (result === "stale") return;
-      if (result === "error") {
-        const next = albumIndexRef.current + 1;
-        if (next >= albumSongsRef.current.length) {
-          setIsPlaying(false);
-          stopProgressTracking();
-          cbRef.current.onAlbumEnd();
+      const prebuffered = prebufferRef.current;
+      prebufferRef.current = null;
+
+      const setOnEnded = (el: HTMLAudioElement) => {
+        el.onended = () => playAlbumTrack(albumIndexRef.current + 1);
+      };
+
+      if (prebuffered && prebuffered.index === index) {
+        // Track is prebuffered on the inactive element — swap and play instantly
+        const oldEl = getActive()!;
+        oldEl.pause();
+        activeRef.current = activeRef.current === "a" ? "b" : "a";
+        resetGains();
+
+        const el = getActive()!;
+        const normGain = getActiveNormGain();
+        if (normGain) normGain.gain.value = normalizationRef.current ? prebuffered.gainValue : 1;
+
+        setOnEnded(el);
+        await el.play();
+        setIsPlaying(true);
+        setProgress(0);
+        startProgressTracking();
+      } else {
+        // Not prebuffered — stop current immediately, load on current element
+        const el = getActive()!;
+        el.pause();
+        setIsPlaying(false);
+
+        setOnEnded(el);
+
+        const result = await loadTrack(el, reverbApi.streamUrl(song.id), normCacheKey(song.id, false), gen);
+        if (result === "stale") return;
+        if (result === "error") {
+          playAlbumTrack(index + 1);
           return;
         }
-        playAlbumTrack(next);
-        return;
-      }
 
-      await el.play();
-      setIsPlaying(true);
-      setProgress(0);
-      startProgressTracking();
+        await el.play();
+        setIsPlaying(true);
+        setProgress(0);
+        startProgressTracking();
+      }
 
       if ("mediaSession" in navigator) {
         navigator.mediaSession.metadata = new MediaMetadata({
@@ -515,9 +509,39 @@ export function useAudioEngine(callbacks: AudioEngineCallbacks) {
           artist: song.artist,
           album: song.album,
         });
+        navigator.mediaSession.setActionHandler("play", () => resume());
+        navigator.mediaSession.setActionHandler("pause", () => pause());
+        navigator.mediaSession.setActionHandler("nexttrack", () =>
+          playAlbumTrack(albumIndexRef.current + 1),
+        );
+        navigator.mediaSession.setActionHandler("previoustrack", () =>
+          playAlbumTrack(Math.max(0, albumIndexRef.current - 1)),
+        );
       }
+
+      prebufferNext();
     },
-    [getActive, loadTrack, startProgressTracking, stopProgressTracking],
+    [getActive, getActiveNormGain, resetGains, loadTrack, startProgressTracking, stopProgressTracking, prebufferNext],
+  );
+
+  const playAlbum = useCallback(
+    async (songs: SongID3[], startIndex: number) => {
+      ensureAudioContext();
+      if (audioCtxRef.current?.state === "suspended") {
+        await audioCtxRef.current.resume();
+      }
+
+      if (clipTimerRef.current) clearTimeout(clipTimerRef.current);
+      if (taperTimerRef.current) clearTimeout(taperTimerRef.current);
+      getInactive()?.pause();
+
+      modeRef.current = "album";
+      albumSongsRef.current = songs;
+      resetGains();
+
+      await playAlbumTrack(startIndex);
+    },
+    [ensureAudioContext, getInactive, resetGains, playAlbumTrack],
   );
 
   const pause = useCallback(() => {
@@ -547,6 +571,8 @@ export function useAudioEngine(callbacks: AudioEngineCallbacks) {
     stopProgressTracking();
     resetGains();
     crossfadingRef.current = false;
+    prebufferRef.current = null;
+    ++prebufferGenRef.current;
     modeRef.current = "idle";
     setIsPlaying(false);
     setProgress(0);
