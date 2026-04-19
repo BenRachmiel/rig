@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -47,11 +47,13 @@ export function PreviewPanel() {
   const [artistOverride, setArtistOverride] = useState("");
   const [albumOverride, setAlbumOverride] = useState("");
 
+  const prevMetaRef = useRef<typeof resolveMeta>(null);
   useEffect(() => {
-    if (resolveMeta) {
+    if (resolveMeta && !prevMetaRef.current) {
       setArtistOverride(resolveMeta.matched_artist ?? resolveMeta.artist);
       setAlbumOverride(resolveMeta.album);
     }
+    prevMetaRef.current = resolveMeta;
   }, [resolveMeta]);
 
   if (!resolveMeta) return null;

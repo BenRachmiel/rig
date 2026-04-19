@@ -157,6 +157,15 @@ describe("reverbApi", () => {
       );
     });
 
+    it("star throws on non-ok response", async () => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue(new Response("Unauthorized", { status: 401 })),
+      );
+
+      await expect(reverbApi.star("song-1")).rejects.toThrow("401");
+    });
+
     it("calls unstar endpoint", async () => {
       const mockFetch = vi.fn().mockResolvedValue(new Response("", { status: 200 }));
       vi.stubGlobal("fetch", mockFetch);
@@ -165,6 +174,15 @@ describe("reverbApi", () => {
       expect(mockFetch).toHaveBeenCalledWith(
         expect.stringContaining("/unstar?id=song-1"),
       );
+    });
+
+    it("unstar throws on non-ok response", async () => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue(new Response("Not Found", { status: 404 })),
+      );
+
+      await expect(reverbApi.unstar("song-1")).rejects.toThrow("404");
     });
   });
 
@@ -177,6 +195,15 @@ describe("reverbApi", () => {
       expect(mockFetch).toHaveBeenCalledWith(
         expect.stringContaining("/setRating?id=song-1&rating=4"),
       );
+    });
+
+    it("setRating throws on non-ok response", async () => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue(new Response("Server Error", { status: 500 })),
+      );
+
+      await expect(reverbApi.setRating("song-1", 3)).rejects.toThrow("500");
     });
   });
 

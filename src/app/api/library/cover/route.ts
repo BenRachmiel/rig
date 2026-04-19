@@ -1,9 +1,8 @@
 import { NextRequest } from "next/server";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { headers as getHeaders } from "next/headers";
 import { resolveSafe } from "@/lib/safe-path";
-import { PREAMP_ADMIN_URL } from "@/lib/env";
+import { triggerRescan } from "@/lib/server-helpers";
 
 const COVER_NAMES = ["cover.jpg", "cover.png", "folder.jpg"];
 
@@ -86,13 +85,7 @@ export async function POST(request: NextRequest) {
     await fs.writeFile(path.join(resolved, "cover.jpg"), buffer);
 
     // Trigger Preamp rescan
-    const h = await getHeaders();
-    const user = h.get("x-forwarded-user") || h.get("remote-user");
-    const scanHeaders: Record<string, string> = user ? { "remote-user": user } : {};
-    fetch(`${PREAMP_ADMIN_URL}/admin/scan`, {
-      method: "POST",
-      headers: scanHeaders,
-    }).catch(() => {});
+    triggerRescan();
 
     return Response.json({ ok: true });
   } catch (e) {
@@ -134,13 +127,7 @@ export async function PUT(request: NextRequest) {
     }
 
     // Trigger Preamp rescan
-    const h = await getHeaders();
-    const user = h.get("x-forwarded-user") || h.get("remote-user");
-    const scanHeaders: Record<string, string> = user ? { "remote-user": user } : {};
-    fetch(`${PREAMP_ADMIN_URL}/admin/scan`, {
-      method: "POST",
-      headers: scanHeaders,
-    }).catch(() => {});
+    triggerRescan();
 
     return Response.json({ ok: true });
   } catch (e) {

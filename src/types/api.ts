@@ -42,11 +42,9 @@ export interface JobState {
   tracks_done: number;
 }
 
-export type Job = JobState;
-
 export interface JobUpdateEvent {
   job_id: string;
-  status: string;
+  status: JobState["status"];
   artist?: string;
   album?: string;
   track_count?: number;
@@ -56,7 +54,7 @@ export interface TrackUpdateEvent {
   job_id: string;
   index: number;
   title: string;
-  status: string;
+  status: "done" | "error";
   error?: string;
 }
 

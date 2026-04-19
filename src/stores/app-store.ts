@@ -66,6 +66,8 @@ interface AppState {
   setDockTab: (tab: "preview" | "jobs") => void;
 }
 
+let searchGen = 0;
+
 export const useAppStore = create<AppState>((set, get) => ({
   source: "tidal" as Source,
   albums: [],
@@ -90,12 +92,15 @@ export const useAppStore = create<AppState>((set, get) => ({
   setSource: (source) => set({ source }),
 
   search: async (q) => {
+    const gen = ++searchGen;
     const { source } = get();
     set({ searchLoading: true, searchError: null, searchQuery: q, searchPage: 1 });
     try {
       const albums = await gainApi.searchAlbums(q, source, 1);
+      if (gen !== searchGen) return;
       set({ albums, searchLoading: false, hasMore: albums.length >= 20 });
     } catch (e) {
+      if (gen !== searchGen) return;
       set({
         searchError: e instanceof Error ? e.message : String(e),
         searchLoading: false,
@@ -242,7 +247,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       if (existing) {
         const updated = {
           ...existing,
-          status: evt.status as JobState["status"],
+          status: evt.status,
         };
         if (evt.track_count != null) updated.track_count = evt.track_count;
         if (evt.status === "done" || evt.status === "error") {
@@ -254,7 +259,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           id: evt.job_id,
           artist: evt.artist,
           album: evt.album ?? "",
-          status: evt.status as JobState["status"],
+          status: evt.status,
           current_track: null,
           track_count: evt.track_count ?? 0,
           tracks_done: 0,

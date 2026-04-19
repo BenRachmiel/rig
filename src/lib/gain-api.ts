@@ -1,10 +1,10 @@
-import type { Album, Job, Source, Track } from "@/types/api";
+import type { Album, JobState, Source, Track } from "@/types/api";
 
 const API = "/api/gain";
 
 async function json<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API}${path}`, init);
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
   return res.json() as Promise<T>;
 }
 
@@ -52,8 +52,8 @@ export async function resolveJob(jobId: string): Promise<void> {
   await json(`/jobs/${jobId}/resolve`, { method: "POST" });
 }
 
-export async function getJobs(): Promise<Job[]> {
-  return json<Job[]>("/jobs");
+export async function getJobs(): Promise<JobState[]> {
+  return json<JobState[]>("/jobs");
 }
 
 export async function clearJobs(): Promise<void> {

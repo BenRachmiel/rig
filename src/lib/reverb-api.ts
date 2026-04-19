@@ -43,15 +43,18 @@ export const reverbApi = {
   },
 
   star: async (songId: string): Promise<void> => {
-    await fetch(`${API}/star?id=${encodeURIComponent(songId)}`);
+    const res = await fetch(`${API}/star?id=${encodeURIComponent(songId)}`);
+    if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
   },
 
   unstar: async (songId: string): Promise<void> => {
-    await fetch(`${API}/unstar?id=${encodeURIComponent(songId)}`);
+    const res = await fetch(`${API}/unstar?id=${encodeURIComponent(songId)}`);
+    if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
   },
 
   setRating: async (songId: string, rating: number): Promise<void> => {
-    await fetch(`${API}/setRating?id=${encodeURIComponent(songId)}&rating=${rating}`);
+    const res = await fetch(`${API}/setRating?id=${encodeURIComponent(songId)}&rating=${rating}`);
+    if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
   },
 
   getStarred: async (): Promise<SongID3[]> => {

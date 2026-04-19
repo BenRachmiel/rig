@@ -1,8 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { escapeLucene } from "@/lib/musicbrainz";
-
-const MB_BASE = "https://musicbrainz.org/ws/2";
-const USER_AGENT = "rig/1.0 (https://github.com/rig)";
+import { buildReleaseSearchUrl, fetchMusicBrainz } from "@/lib/musicbrainz";
 
 export async function GET(req: NextRequest) {
   const artist = req.nextUrl.searchParams.get("artist");
@@ -15,21 +12,17 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  const query = `release:${escapeLucene(album)} AND artist:${escapeLucene(artist)}`;
-  const url = `${MB_BASE}/release?query=${encodeURIComponent(query)}&fmt=json&limit=5`;
+  const url = buildReleaseSearchUrl(artist, album, 5);
 
-  const res = await fetch(url, {
-    headers: { "User-Agent": USER_AGENT, Accept: "application/json" },
-  });
-
-  if (!res.ok) {
+  let data: Record<string, unknown>;
+  try {
+    data = await fetchMusicBrainz(url) as Record<string, unknown>;
+  } catch (e) {
     return NextResponse.json(
-      { error: `MusicBrainz returned ${res.status}` },
-      { status: 502 }
+      { error: e instanceof Error ? e.message : "MusicBrainz request failed" },
+      { status: 502 },
     );
   }
-
-  const data = await res.json();
   const releases: unknown[] = data.releases ?? [];
 
   const results = releases.map((r: unknown) => {

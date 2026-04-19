@@ -1,7 +1,6 @@
 import { NextRequest } from "next/server";
-import { headers as getHeaders } from "next/headers";
 import { resolveSafe } from "@/lib/safe-path";
-import { PREAMP_ADMIN_URL } from "@/lib/env";
+import { triggerRescan } from "@/lib/server-helpers";
 import { createReadStream, createWriteStream } from "node:fs";
 import { open, rename, unlink, stat } from "node:fs/promises";
 import { pipeline } from "node:stream/promises";
@@ -161,13 +160,7 @@ export async function PATCH(request: NextRequest) {
     tmpPath = null; // prevent cleanup
 
     // Trigger Preamp rescan
-    const h = await getHeaders();
-    const user = h.get("x-forwarded-user") || h.get("remote-user");
-    const scanHeaders: Record<string, string> = user ? { "remote-user": user } : {};
-    fetch(`${PREAMP_ADMIN_URL}/admin/scan`, {
-      method: "POST",
-      headers: scanHeaders,
-    }).catch(() => {});
+    triggerRescan();
 
     return Response.json({ ok: true });
   } catch (e) {

@@ -1,9 +1,8 @@
 import { NextRequest } from "next/server";
-import { headers as getHeaders } from "next/headers";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { resolveSafe } from "@/lib/safe-path";
-import { PREAMP_ADMIN_URL } from "@/lib/env";
+import { triggerRescan } from "@/lib/server-helpers";
 
 export async function POST(request: NextRequest) {
   const { from, to } = (await request.json()) as { from: string; to: string };
@@ -40,13 +39,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Trigger Preamp rescan
-    const h = await getHeaders();
-    const user = h.get("x-forwarded-user") || h.get("remote-user");
-    const scanHeaders: Record<string, string> = user ? { "remote-user": user } : {};
-    fetch(`${PREAMP_ADMIN_URL}/admin/scan`, {
-      method: "POST",
-      headers: scanHeaders,
-    }).catch(() => {});
+    triggerRescan();
 
     return Response.json({ ok: true });
   } catch (e) {
