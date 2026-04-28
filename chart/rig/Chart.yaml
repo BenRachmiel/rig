@@ -1,8 +1,8 @@
 apiVersion: v2
 name: rig
 description: Music library management UI with integrated backends
-version: 0.1.48
-appVersion: "0.1.48"
+version: 0.1.49
+appVersion: "0.1.49"
 type: application
 dependencies:
   - name: preamp
