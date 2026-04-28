@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { isValidYear } from "./track-table";
+import { isValidYear } from "@/lib/validate";
 
 describe("isValidYear", () => {
   it("accepts empty string", () => {

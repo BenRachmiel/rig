@@ -4,15 +4,15 @@ import { useEffect, useState, useCallback } from "react";
 import { use } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ChevronRight, Save, Pencil, Check, X, Loader2 } from "lucide-react";
+import { ChevronRight, Loader2 } from "lucide-react";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import * as libraryApi from "@/lib/library-api";
 import { safePathSegment } from "@/lib/safe-path";
-import { AlbumCoverSection } from "@/components/library/album-cover";
+import { AlbumHero } from "@/components/library/album-hero";
 import { AlbumBulkEditPanel } from "@/components/library/album-bulk-edit";
-import { TrackTable } from "@/components/library/track-table";
+import { TrackList } from "@/components/library/track-list";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { LibraryEntry, TagData } from "@/types/api";
@@ -36,13 +36,19 @@ export default function AlbumPage({
   const basePath = `${artistName}/${albumName}`;
 
   const [tracks, setTracks] = useState<TrackWithTags[]>([]);
-  const [editingArtist, setEditingArtist] = useState(false);
-  const [newArtistName, setNewArtistName] = useState(artistName);
-  const [changingArtist, setChangingArtist] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<Set<string>>(new Set());
   const [initialGenre, setInitialGenre] = useState("");
   const [initialYear, setInitialYear] = useState("");
+
+  // Editing state
+  const [editing, setEditing] = useState(false);
+  const [confirmingExitEdit, setConfirmingExitEdit] = useState(false);
+
+  // Artist rename state
+  const [renamingArtist, setRenamingArtist] = useState(false);
+  const [newArtistName, setNewArtistName] = useState(artistName);
+  const [changingArtist, setChangingArtist] = useState(false);
   const [confirmingRename, setConfirmingRename] = useState(false);
 
   const loadTracks = useCallback(async () => {
@@ -139,10 +145,34 @@ export default function AlbumPage({
     }
   };
 
+  const dirtyCount = tracks.filter((t) => t.dirty).length;
+
+  const toggleEdit = () => {
+    if (editing && dirtyCount > 0) {
+      setConfirmingExitEdit(true);
+      return;
+    }
+    setEditing(!editing);
+  };
+
+  const discardAndExitEdit = () => {
+    setTracks((prev) =>
+      prev.map((t) => ({ ...t, edits: {}, dirty: false }))
+    );
+    setEditing(false);
+    setConfirmingExitEdit(false);
+  };
+
+  // Artist rename
+  const startRename = () => {
+    setRenamingArtist(true);
+    setNewArtistName(artistName);
+  };
+
   const requestChangeArtist = () => {
     const trimmed = newArtistName.trim();
     if (!trimmed || trimmed === artistName) {
-      setEditingArtist(false);
+      setRenamingArtist(false);
       setNewArtistName(artistName);
       return;
     }
@@ -168,121 +198,107 @@ export default function AlbumPage({
     }
   };
 
-  const dirtyCount = tracks.filter((t) => t.dirty).length;
-
   return (
-    <div className="max-w-6xl mx-auto px-4 py-4 md:px-6 md:py-6 flex flex-col gap-4">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <div className="min-w-0">
-          <nav className="flex flex-wrap items-center gap-1 text-sm text-muted-foreground">
-            <Link href="/library" className="hover:text-foreground transition-colors">
-              Library
-            </Link>
-            <ChevronRight className="h-3 w-3" />
-            {editingArtist ? (
-              <span className="inline-flex items-center gap-1">
-                <Input
-                  value={newArtistName}
-                  onChange={(e) => setNewArtistName(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") requestChangeArtist();
-                    if (e.key === "Escape") {
-                      setEditingArtist(false);
-                      setNewArtistName(artistName);
-                    }
-                  }}
-                  className="h-6 text-sm w-48 px-1"
-                  autoFocus
-                  disabled={changingArtist}
-                />
-                {changingArtist ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <>
-                    <button type="button" onClick={requestChangeArtist} className="hover:text-foreground">
-                      <Check className="h-3.5 w-3.5" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setEditingArtist(false);
-                        setNewArtistName(artistName);
-                      }}
-                      className="hover:text-foreground"
-                    >
-                      <X className="h-3.5 w-3.5" />
-                    </button>
-                  </>
-                )}
-              </span>
-            ) : (
-              <span className="inline-flex items-center gap-1">
-                <Link
-                  href={`/library/${encodeURIComponent(artistName)}`}
-                  className="hover:text-foreground transition-colors"
-                >
-                  {artistName}
-                </Link>
-                <button
-                  type="button"
-                  onClick={() => setEditingArtist(true)}
-                  className="hover:text-foreground"
-                >
-                  <Pencil className="h-3 w-3" />
-                </button>
-              </span>
-            )}
-            <ChevronRight className="h-3 w-3" />
-            <span className="text-foreground">{albumName}</span>
-          </nav>
-        </div>
-        {dirtyCount > 0 && (
-          <Button onClick={saveAll} size="sm">
-            <Save className="h-4 w-4 mr-1.5" />
-            Save {dirtyCount} change{dirtyCount !== 1 ? "s" : ""}
-          </Button>
-        )}
-      </div>
+    <div className="max-w-4xl mx-auto px-4 py-4 md:px-6 md:py-6 flex flex-col gap-4">
+      <nav className="flex flex-wrap items-center gap-1 text-sm text-muted-foreground">
+        <Link href="/library" className="hover:text-foreground transition-colors">
+          Library
+        </Link>
+        <ChevronRight className="h-3 w-3" />
+        <Link
+          href={`/library/${encodeURIComponent(artistName)}`}
+          className="hover:text-foreground transition-colors"
+        >
+          {artistName}
+        </Link>
+        <ChevronRight className="h-3 w-3" />
+        <span className="text-foreground">{albumName}</span>
+      </nav>
 
-      <AlbumCoverSection
+      <AlbumHero
         basePath={basePath}
         tracks={tracks}
         artistName={artistName}
         albumName={albumName}
-      />
-
-      <AlbumBulkEditPanel
-        artistName={artistName}
-        albumName={albumName}
+        editing={editing}
+        onToggleEdit={toggleEdit}
+        dirtyCount={dirtyCount}
+        onSaveAll={saveAll}
         initialGenre={initialGenre}
         initialYear={initialYear}
-        onApplyToAll={applyToAllTracks}
+        onStartRename={startRename}
       />
 
+      {renamingArtist && (
+        <div className="flex items-center gap-2">
+          <Input
+            value={newArtistName}
+            onChange={(e) => setNewArtistName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") requestChangeArtist();
+              if (e.key === "Escape") {
+                setRenamingArtist(false);
+                setNewArtistName(artistName);
+              }
+            }}
+            className="h-8 text-sm max-w-xs"
+            placeholder="New artist name"
+            autoFocus
+            disabled={changingArtist}
+          />
+          {changingArtist ? (
+            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+          ) : (
+            <>
+              <Button size="sm" onClick={requestChangeArtist}>
+                Rename
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setRenamingArtist(false);
+                  setNewArtistName(artistName);
+                }}
+              >
+                Cancel
+              </Button>
+            </>
+          )}
+        </div>
+      )}
+
+      {editing && (
+        <AlbumBulkEditPanel
+          artistName={artistName}
+          albumName={albumName}
+          initialGenre={initialGenre}
+          initialYear={initialYear}
+          onApplyToAll={applyToAllTracks}
+        />
+      )}
+
       {loading ? (
-        <div className="rounded-lg border">
-          <div className="flex flex-col gap-3 p-4">
-            {Array.from({ length: 5 }, (_, i) => (
-              <div key={i} className="flex items-center gap-3">
-                <Skeleton className="h-4 w-6" />
-                <Skeleton className="h-4 flex-1" />
-                <Skeleton className="h-4 w-24" />
-                <Skeleton className="h-4 w-16" />
-                <Skeleton className="h-4 w-12" />
-              </div>
-            ))}
-          </div>
+        <div className="rounded-lg border divide-y">
+          {Array.from({ length: 5 }, (_, i) => (
+            <div key={i} className="flex items-center gap-3 px-4 py-2.5">
+              <Skeleton className="h-4 w-8" />
+              <Skeleton className="h-4 flex-1" />
+              <Skeleton className="h-4 w-4" />
+            </div>
+          ))}
         </div>
       ) : tracks.length === 0 ? (
         <div className="rounded-lg border p-8 text-center text-muted-foreground">
           No audio files found
         </div>
       ) : (
-        <TrackTable
+        <TrackList
           tracks={tracks}
-          saving={saving}
           artistName={artistName}
           albumName={albumName}
+          editing={editing}
+          saving={saving}
           onUpdateField={updateField}
           onSaveTrack={saveTrack}
         />
@@ -296,6 +312,16 @@ export default function AlbumPage({
         confirmLabel="Rename"
         variant="default"
         onConfirm={changeArtist}
+      />
+
+      <ConfirmDialog
+        open={confirmingExitEdit}
+        onOpenChange={setConfirmingExitEdit}
+        title="Discard changes?"
+        description={`You have ${dirtyCount} unsaved change${dirtyCount !== 1 ? "s" : ""}. Exiting edit mode will discard them.`}
+        confirmLabel="Discard"
+        variant="destructive"
+        onConfirm={discardAndExitEdit}
       />
     </div>
   );

@@ -14,7 +14,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import * as libraryApi from "@/lib/library-api";
-import { isValidYear } from "@/components/library/track-table";
+import { isValidYear } from "@/lib/validate";
 import type { MusicBrainzResult } from "@/types/api";
 
 interface AlbumBulkEditPanelProps {
