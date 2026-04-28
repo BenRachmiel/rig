@@ -40,6 +40,7 @@ export interface JobState {
   current_track: number | null;
   track_count: number;
   tracks_done: number;
+  errors: string[];
 }
 
 export interface JobUpdateEvent {

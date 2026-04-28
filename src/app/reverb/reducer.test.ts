@@ -311,6 +311,23 @@ describe("reverbReducer", () => {
       expect(next.album).toBe(album);
     });
 
+    it("uses startIndex when provided", () => {
+      const album = fakeAlbum({ song: [
+        fakeSong({ id: "s1", track: 1 }),
+        fakeSong({ id: "s2", track: 2 }),
+        fakeSong({ id: "s3", track: 3 }),
+      ]});
+      const next = reverbReducer(initialState, { type: "DIRECT_ALBUM", album, startIndex: 2 });
+      expect(next.phase).toBe("album");
+      expect(next.albumTrackIndex).toBe(2);
+    });
+
+    it("defaults to 0 when startIndex omitted", () => {
+      const album = fakeAlbum();
+      const next = reverbReducer(initialState, { type: "DIRECT_ALBUM", album });
+      expect(next.albumTrackIndex).toBe(0);
+    });
+
     it("resets pool state on direct album load", () => {
       const songs = [fakeSong({ id: "s1" }), fakeSong({ id: "s2" })];
       const clipState = reverbReducer(initialState, { type: "POOL_LOADED", songs });

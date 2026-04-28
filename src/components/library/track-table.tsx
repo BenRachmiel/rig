@@ -1,6 +1,7 @@
 "use client";
 
-import { Save } from "lucide-react";
+import Link from "next/link";
+import { Save, Play } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -16,8 +17,14 @@ import type { TrackWithTags } from "@/app/library/[artist]/[album]/page";
 interface TrackTableProps {
   tracks: TrackWithTags[];
   saving: Set<string>;
+  artistName: string;
+  albumName: string;
   onUpdateField: (idx: number, field: string, value: string | number | null) => void;
   onSaveTrack: (idx: number) => void;
+}
+
+export function isValidYear(value: string): boolean {
+  return value === "" || /^\d{4}$/.test(value);
 }
 
 function getVal(track: TrackWithTags, field: string) {
@@ -26,7 +33,7 @@ function getVal(track: TrackWithTags, field: string) {
   return (track.tags as unknown as Record<string, unknown>)[field] ?? "";
 }
 
-export function TrackTable({ tracks, saving, onUpdateField, onSaveTrack }: TrackTableProps) {
+export function TrackTable({ tracks, saving, artistName, albumName, onUpdateField, onSaveTrack }: TrackTableProps) {
   return (
     <div className="rounded-lg border overflow-x-auto">
       <Table>
@@ -47,7 +54,18 @@ export function TrackTable({ tracks, saving, onUpdateField, onSaveTrack }: Track
               className={track.dirty ? "bg-accent/30" : ""}
             >
               <TableCell className="font-mono text-muted-foreground text-xs">
-                {String(getVal(track, "track") ?? "")}
+                <span className="group/track inline-flex items-center gap-1">
+                  <span className="group-hover/track:hidden">
+                    {String(getVal(track, "track") ?? "")}
+                  </span>
+                  <Link
+                    href={`/reverb?artist=${encodeURIComponent(artistName)}&album=${encodeURIComponent(albumName)}&track=${idx + 1}`}
+                    className="hidden group-hover/track:inline-flex"
+                    title="Play in Reverb"
+                  >
+                    <Play className="h-3 w-3 fill-current" />
+                  </Link>
+                </span>
               </TableCell>
               <TableCell>
                 <Input
@@ -71,17 +89,25 @@ export function TrackTable({ tracks, saving, onUpdateField, onSaveTrack }: Track
                 />
               </TableCell>
               <TableCell>
-                <Input
-                  value={String(getVal(track, "year") ?? "")}
-                  onChange={(e) =>
-                    onUpdateField(
-                      idx,
-                      "year",
-                      e.target.value ? Number(e.target.value) : null,
-                    )
-                  }
-                  className="h-7 text-xs border-none bg-transparent px-1 focus-visible:bg-background w-16"
-                />
+                {(() => {
+                  const yearVal = String(getVal(track, "year") ?? "");
+                  const yearInvalid = !isValidYear(yearVal);
+                  return (
+                    <Input
+                      value={yearVal}
+                      onChange={(e) =>
+                        onUpdateField(
+                          idx,
+                          "year",
+                          e.target.value ? Number(e.target.value) : null,
+                        )
+                      }
+                      inputMode="numeric"
+                      pattern="[0-9]{4}"
+                      className={`h-7 text-xs border-none bg-transparent px-1 focus-visible:bg-background w-16 ${yearInvalid ? "ring-1 ring-red-500" : ""}`}
+                    />
+                  );
+                })()}
               </TableCell>
               <TableCell>
                 {track.dirty && (
@@ -90,7 +116,7 @@ export function TrackTable({ tracks, saving, onUpdateField, onSaveTrack }: Track
                     size="icon"
                     className="h-6 w-6"
                     onClick={() => onSaveTrack(idx)}
-                    disabled={saving.has(track.entry.path)}
+                    disabled={saving.has(track.entry.path) || !isValidYear(String(getVal(track, "year") ?? ""))}
                   >
                     <Save className="h-3.5 w-3.5" />
                   </Button>

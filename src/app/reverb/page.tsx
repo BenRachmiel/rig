@@ -60,8 +60,11 @@ function ReverbPageInner() {
     const album = searchParams.get("album");
     if (!artist || !album) return;
 
+    const trackParam = searchParams.get("track");
+    const startIndex = trackParam ? Math.max(0, parseInt(trackParam, 10) - 1) : 0;
+
     // Deduplicate: skip if we already processed these exact params
-    const paramsKey = `${artist}\0${album}`;
+    const paramsKey = `${artist}\0${album}\0${trackParam ?? ""}`;
     if (paramsKey === lastDirectParamsRef.current) return;
     lastDirectParamsRef.current = paramsKey;
 
@@ -77,7 +80,7 @@ function ReverbPageInner() {
     reverbApi
       .searchAlbum(artist, album)
       .then((found) => {
-        if (found) dispatch({ type: "DIRECT_ALBUM", album: found });
+        if (found) dispatch({ type: "DIRECT_ALBUM", album: found, startIndex });
         else dispatch({ type: "ERROR", message: `Album "${album}" by "${artist}" not found` });
       })
       .catch((e) =>
@@ -135,11 +138,12 @@ function ReverbPageInner() {
       return;
     }
     directLoadRef.current = false;
-    engine.playAlbum(state.album.song, 0);
+    engine.playAlbum(state.album.song, state.albumTrackIndex);
 
+    const startSong = state.album.song[state.albumTrackIndex] ?? state.album.song[0];
     usePlaybackStore.getState().startPlayback(
       {
-        title: state.album.song[0]?.title ?? state.album.name,
+        title: startSong?.title ?? state.album.name,
         artist: state.album.artist,
         album: state.album.name,
       },

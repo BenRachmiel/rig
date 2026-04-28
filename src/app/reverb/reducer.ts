@@ -32,7 +32,7 @@ export type ReverbAction =
   | { type: "RESTORE"; album: AlbumWithSongsID3; trackIndex: number }
   | { type: "ABANDON_ALBUM" }
   | { type: "DIRECT_ALBUM_LOADING" }
-  | { type: "DIRECT_ALBUM"; album: AlbumWithSongsID3 }
+  | { type: "DIRECT_ALBUM"; album: AlbumWithSongsID3; startIndex?: number }
   | { type: "ERROR"; message: string };
 
 export const CLIP_DURATION = 30;
@@ -185,7 +185,7 @@ export function reverbReducer(state: ReverbState, action: ReverbAction): ReverbS
         ...initialState,
         phase: "album",
         album: action.album,
-        albumTrackIndex: 0,
+        albumTrackIndex: action.startIndex ?? 0,
       };
     }
 

@@ -13,6 +13,8 @@ import { safePathSegment } from "@/lib/safe-path";
 import { AlbumCoverSection } from "@/components/library/album-cover";
 import { AlbumBulkEditPanel } from "@/components/library/album-bulk-edit";
 import { TrackTable } from "@/components/library/track-table";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { Skeleton } from "@/components/ui/skeleton";
 import type { LibraryEntry, TagData } from "@/types/api";
 
 export interface TrackWithTags {
@@ -41,6 +43,7 @@ export default function AlbumPage({
   const [saving, setSaving] = useState<Set<string>>(new Set());
   const [initialGenre, setInitialGenre] = useState("");
   const [initialYear, setInitialYear] = useState("");
+  const [confirmingRename, setConfirmingRename] = useState(false);
 
   const loadTracks = useCallback(async () => {
     setLoading(true);
@@ -136,13 +139,18 @@ export default function AlbumPage({
     }
   };
 
-  const changeArtist = async () => {
+  const requestChangeArtist = () => {
     const trimmed = newArtistName.trim();
     if (!trimmed || trimmed === artistName) {
       setEditingArtist(false);
       setNewArtistName(artistName);
       return;
     }
+    setConfirmingRename(true);
+  };
+
+  const changeArtist = async () => {
+    const trimmed = newArtistName.trim();
     setChangingArtist(true);
     try {
       for (const track of tracks) {
@@ -177,7 +185,7 @@ export default function AlbumPage({
                   value={newArtistName}
                   onChange={(e) => setNewArtistName(e.target.value)}
                   onKeyDown={(e) => {
-                    if (e.key === "Enter") changeArtist();
+                    if (e.key === "Enter") requestChangeArtist();
                     if (e.key === "Escape") {
                       setEditingArtist(false);
                       setNewArtistName(artistName);
@@ -191,7 +199,7 @@ export default function AlbumPage({
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
                 ) : (
                   <>
-                    <button type="button" onClick={changeArtist} className="hover:text-foreground">
+                    <button type="button" onClick={requestChangeArtist} className="hover:text-foreground">
                       <Check className="h-3.5 w-3.5" />
                     </button>
                     <button
@@ -252,8 +260,18 @@ export default function AlbumPage({
       />
 
       {loading ? (
-        <div className="rounded-lg border p-8 text-center text-muted-foreground">
-          Loading tracks...
+        <div className="rounded-lg border">
+          <div className="flex flex-col gap-3 p-4">
+            {Array.from({ length: 5 }, (_, i) => (
+              <div key={i} className="flex items-center gap-3">
+                <Skeleton className="h-4 w-6" />
+                <Skeleton className="h-4 flex-1" />
+                <Skeleton className="h-4 w-24" />
+                <Skeleton className="h-4 w-16" />
+                <Skeleton className="h-4 w-12" />
+              </div>
+            ))}
+          </div>
         </div>
       ) : tracks.length === 0 ? (
         <div className="rounded-lg border p-8 text-center text-muted-foreground">
@@ -263,10 +281,22 @@ export default function AlbumPage({
         <TrackTable
           tracks={tracks}
           saving={saving}
+          artistName={artistName}
+          albumName={albumName}
           onUpdateField={updateField}
           onSaveTrack={saveTrack}
         />
       )}
+
+      <ConfirmDialog
+        open={confirmingRename}
+        onOpenChange={setConfirmingRename}
+        title="Rename artist"
+        description={`This will move files on disk from "${artistName}" to "${newArtistName.trim()}". Continue?`}
+        confirmLabel="Rename"
+        variant="default"
+        onConfirm={changeArtist}
+      />
     </div>
   );
 }

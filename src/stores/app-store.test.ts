@@ -114,7 +114,7 @@ describe("handleJobUpdate", () => {
   it("updates status of existing job", () => {
     useAppStore.setState({
       jobs: new Map([
-        ["job-1", { id: "job-1", artist: "A", album: "B", status: "queued", current_track: null, track_count: 10, tracks_done: 0 }],
+        ["job-1", { id: "job-1", artist: "A", album: "B", status: "queued", current_track: null, track_count: 10, tracks_done: 0, errors: [] }],
       ]),
     });
 
@@ -125,7 +125,7 @@ describe("handleJobUpdate", () => {
   it("updates track_count when provided", () => {
     useAppStore.setState({
       jobs: new Map([
-        ["job-1", { id: "job-1", artist: "A", album: "B", status: "queued", current_track: null, track_count: 0, tracks_done: 0 }],
+        ["job-1", { id: "job-1", artist: "A", album: "B", status: "queued", current_track: null, track_count: 0, tracks_done: 0, errors: [] }],
       ]),
     });
 
@@ -136,7 +136,7 @@ describe("handleJobUpdate", () => {
   it("sets tracks_done to track_count on done", () => {
     useAppStore.setState({
       jobs: new Map([
-        ["job-1", { id: "job-1", artist: "A", album: "B", status: "active", current_track: null, track_count: 10, tracks_done: 5 }],
+        ["job-1", { id: "job-1", artist: "A", album: "B", status: "active", current_track: null, track_count: 10, tracks_done: 5, errors: [] }],
       ]),
     });
 
@@ -170,7 +170,7 @@ describe("handleTrackUpdate", () => {
   it("increments tracks_done on done status", () => {
     useAppStore.setState({
       jobs: new Map([
-        ["job-1", { id: "job-1", artist: "A", album: "B", status: "active", current_track: null, track_count: 10, tracks_done: 3 }],
+        ["job-1", { id: "job-1", artist: "A", album: "B", status: "active", current_track: null, track_count: 10, tracks_done: 3, errors: [] }],
       ]),
     });
 
@@ -181,12 +181,36 @@ describe("handleTrackUpdate", () => {
   it("increments tracks_done on error status", () => {
     useAppStore.setState({
       jobs: new Map([
-        ["job-1", { id: "job-1", artist: "A", album: "B", status: "active", current_track: null, track_count: 10, tracks_done: 3 }],
+        ["job-1", { id: "job-1", artist: "A", album: "B", status: "active", current_track: null, track_count: 10, tracks_done: 3, errors: [] }],
       ]),
     });
 
     useAppStore.getState().handleTrackUpdate({ job_id: "job-1", index: 4, title: "Track 4", status: "error", error: "fail" });
     expect(useAppStore.getState().jobs.get("job-1")?.tracks_done).toBe(4);
+  });
+
+  it("collects error messages on track error", () => {
+    useAppStore.setState({
+      jobs: new Map([
+        ["job-1", { id: "job-1", artist: "A", album: "B", status: "active", current_track: null, track_count: 10, tracks_done: 3, errors: [] }],
+      ]),
+    });
+
+    useAppStore.getState().handleTrackUpdate({ job_id: "job-1", index: 4, title: "Track 4", status: "error", error: "Network timeout" });
+    const job = useAppStore.getState().jobs.get("job-1");
+    expect(job?.errors).toHaveLength(1);
+    expect(job?.errors[0]).toBe("Track 4: Network timeout");
+  });
+
+  it("does not collect errors on done status", () => {
+    useAppStore.setState({
+      jobs: new Map([
+        ["job-1", { id: "job-1", artist: "A", album: "B", status: "active", current_track: null, track_count: 10, tracks_done: 3, errors: [] }],
+      ]),
+    });
+
+    useAppStore.getState().handleTrackUpdate({ job_id: "job-1", index: 4, title: "Track 4", status: "done" });
+    expect(useAppStore.getState().jobs.get("job-1")?.errors).toHaveLength(0);
   });
 
   it("ignores unknown job_id", () => {

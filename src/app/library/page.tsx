@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button";
 import { StatCard } from "@/components/library/stat-card";
 import { ArtistsList } from "@/components/library/artists-list";
 import { IssuePanel } from "@/components/library/issue-panel";
+import { LibrarySearch } from "@/components/library/library-search";
+import { Skeleton } from "@/components/ui/skeleton";
 import { preampApi } from "@/lib/preamp-api";
 import * as libraryApi from "@/lib/library-api";
 import type { Stats, ScanStatus, LibraryEntry } from "@/types/api";
@@ -82,13 +84,15 @@ export default function LibraryPage() {
         </div>
       )}
 
-      {stats && (
+      {stats ? (
         <>
           <div className="grid grid-cols-3 gap-4">
             <StatCard label="Artists" value={stats.artists} />
             <StatCard label="Albums" value={stats.albums} />
             <StatCard label="Songs" value={stats.songs} />
           </div>
+
+          <LibrarySearch />
 
           <ArtistsList artists={artists} />
 
@@ -98,6 +102,22 @@ export default function LibraryPage() {
             scan={scan}
             onStatsRefresh={refreshStats}
           />
+        </>
+      ) : (
+        <>
+          <div className="grid grid-cols-3 gap-4">
+            {Array.from({ length: 3 }, (_, i) => (
+              <div key={i} className="rounded-lg border bg-card p-4 flex flex-col gap-2">
+                <Skeleton className="h-3 w-12" />
+                <Skeleton className="h-6 w-16" />
+              </div>
+            ))}
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+            {Array.from({ length: 8 }, (_, i) => (
+              <Skeleton key={i} className="h-10 rounded-lg" />
+            ))}
+          </div>
         </>
       )}
     </div>

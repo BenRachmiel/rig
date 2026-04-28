@@ -5,6 +5,7 @@ import { use } from "react";
 import Link from "next/link";
 import { ChevronRight } from "lucide-react";
 import * as libraryApi from "@/lib/library-api";
+import { Skeleton } from "@/components/ui/skeleton";
 import type { LibraryEntry } from "@/types/api";
 
 export default function ArtistPage({
@@ -15,11 +16,13 @@ export default function ArtistPage({
   const { artist } = use(params);
   const artistName = decodeURIComponent(artist);
   const [albums, setAlbums] = useState<LibraryEntry[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     libraryApi
       .browse(artistName)
-      .then((r) => setAlbums(r.entries.filter((e) => e.type === "directory")));
+      .then((r) => setAlbums(r.entries.filter((e) => e.type === "directory")))
+      .finally(() => setLoading(false));
   }, [artistName]);
 
   return (
@@ -37,6 +40,16 @@ export default function ArtistPage({
         </p>
       </div>
 
+      {loading ? (
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+          {Array.from({ length: 6 }, (_, i) => (
+            <div key={i} className="rounded-lg border bg-card overflow-hidden">
+              <Skeleton className="aspect-square w-full rounded-none" />
+              <Skeleton className="h-4 mx-3 my-2 w-2/3" />
+            </div>
+          ))}
+        </div>
+      ) : (
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
         {albums.map((album) => (
           <Link
@@ -59,6 +72,7 @@ export default function ArtistPage({
           </Link>
         ))}
       </div>
+      )}
     </div>
   );
 }

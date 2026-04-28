@@ -1,4 +1,18 @@
-import type { LibraryEntry, TagData, ScanStatus, MusicBrainzResult } from "@/types/api";
+import type {
+  LibraryEntry,
+  TagData,
+  ScanStatus,
+  MusicBrainzResult,
+  SongID3,
+  AlbumWithSongsID3,
+  SubsonicResponse,
+} from "@/types/api";
+
+export interface SearchResult {
+  artists: { id: string; name: string; albumCount: number }[];
+  albums: AlbumWithSongsID3[];
+  songs: SongID3[];
+}
 
 const API = "/api/library";
 
@@ -71,6 +85,30 @@ export async function musicbrainzLookup(
   if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
   const data = await res.json();
   return data.results;
+}
+
+export async function searchLibrary(query: string): Promise<SearchResult> {
+  const params = new URLSearchParams({
+    query,
+    artistCount: "10",
+    albumCount: "10",
+    songCount: "20",
+  });
+  const res = await fetch(`/api/reverb/search3?${params}`);
+  if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
+  const data: SubsonicResponse<{
+    searchResult3?: {
+      artist?: { id: string; name: string; albumCount: number }[];
+      album?: AlbumWithSongsID3[];
+      song?: SongID3[];
+    };
+  }> = await res.json();
+  const result = data["subsonic-response"].searchResult3;
+  return {
+    artists: result?.artist ?? [],
+    albums: result?.album ?? [],
+    songs: result?.song ?? [],
+  };
 }
 
 export async function musicbrainzCover(

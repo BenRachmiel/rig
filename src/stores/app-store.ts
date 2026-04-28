@@ -227,6 +227,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       current_track: null,
       track_count: totalTracks || selectedTracks.length,
       tracks_done: 0,
+      errors: [],
     };
 
     set((s) => {
@@ -263,6 +264,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           current_track: null,
           track_count: evt.track_count ?? 0,
           tracks_done: 0,
+          errors: [],
         });
       }
       return { jobs };
@@ -273,9 +275,14 @@ export const useAppStore = create<AppState>((set, get) => ({
       const jobs = new Map(s.jobs);
       const job = jobs.get(evt.job_id);
       if (job && (evt.status === "done" || evt.status === "error")) {
+        const errors =
+          evt.status === "error" && evt.error
+            ? [...job.errors, `${evt.title}: ${evt.error}`]
+            : job.errors;
         jobs.set(evt.job_id, {
           ...job,
           tracks_done: job.tracks_done + 1,
+          errors,
         });
       }
       return { jobs };
@@ -296,7 +303,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     const existing = await gainApi.getJobs();
     set(() => {
       const jobs = new Map<string, JobState>();
-      for (const j of existing) jobs.set(j.id, { ...j });
+      for (const j of existing) jobs.set(j.id, { ...j, errors: j.errors ?? [] });
       return { jobs };
     });
   },

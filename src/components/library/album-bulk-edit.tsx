@@ -14,6 +14,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import * as libraryApi from "@/lib/library-api";
+import { isValidYear } from "@/components/library/track-table";
 import type { MusicBrainzResult } from "@/types/api";
 
 interface AlbumBulkEditPanelProps {
@@ -75,11 +76,18 @@ export function AlbumBulkEditPanel({
           id="album-year"
           value={albumYear}
           onChange={(e) => setAlbumYear(e.target.value)}
+          inputMode="numeric"
+          pattern="[0-9]{4}"
           placeholder="Year"
-          className="h-8 w-20"
+          className={`h-8 w-20 ${!isValidYear(albumYear) ? "ring-1 ring-red-500" : ""}`}
         />
       </div>
-      <Button variant="outline" size="sm" onClick={() => onApplyToAll(albumGenre, albumYear)}>
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => onApplyToAll(albumGenre, albumYear)}
+        disabled={!isValidYear(albumYear)}
+      >
         Apply to all tracks
       </Button>
 

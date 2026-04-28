@@ -4,11 +4,14 @@ import { useEffect, useState, useCallback } from "react";
 import { preampApi } from "@/lib/preamp-api";
 import { CredentialTable } from "@/components/credentials/credential-table";
 import { CreateCredentialDialog } from "@/components/credentials/create-dialog";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { Skeleton } from "@/components/ui/skeleton";
 import type { Credential } from "@/types/api";
 
 export default function CredentialsPage() {
   const [credentials, setCredentials] = useState<Credential[]>([]);
   const [loading, setLoading] = useState(true);
+  const [revokeId, setRevokeId] = useState<string | null>(null);
 
   const fetchCredentials = useCallback(async () => {
     try {
@@ -27,10 +30,14 @@ export default function CredentialsPage() {
     fetchCredentials();
   };
 
-  const handleRevoke = async (id: string) => {
-    if (!confirm("Revoke this credential? Connected clients will lose access."))
-      return;
-    await preampApi.deleteCredential(id);
+  const handleRevoke = (id: string) => {
+    setRevokeId(id);
+  };
+
+  const confirmRevoke = async () => {
+    if (!revokeId) return;
+    await preampApi.deleteCredential(revokeId);
+    setRevokeId(null);
     fetchCredentials();
   };
 
@@ -47,8 +54,18 @@ export default function CredentialsPage() {
       </div>
 
       {loading ? (
-        <div className="rounded-lg border p-8 text-center text-muted-foreground">
-          Loading...
+        <div className="rounded-lg border">
+          <div className="flex flex-col gap-3 p-4">
+            {Array.from({ length: 3 }, (_, i) => (
+              <div key={i} className="flex items-center justify-between">
+                <div className="flex flex-col gap-1.5">
+                  <Skeleton className="h-4 w-32" />
+                  <Skeleton className="h-3 w-48" />
+                </div>
+                <Skeleton className="h-7 w-16" />
+              </div>
+            ))}
+          </div>
         </div>
       ) : (
         <CredentialTable
@@ -57,6 +74,15 @@ export default function CredentialsPage() {
           onRevoke={handleRevoke}
         />
       )}
+
+      <ConfirmDialog
+        open={revokeId !== null}
+        onOpenChange={(open) => !open && setRevokeId(null)}
+        title="Revoke credential"
+        description="Revoke this credential? Connected clients will lose access."
+        confirmLabel="Revoke"
+        onConfirm={confirmRevoke}
+      />
     </div>
   );
 }
