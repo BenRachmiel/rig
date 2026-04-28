@@ -36,15 +36,15 @@ function getVal(track: TrackWithTags, field: string) {
 export function TrackTable({ tracks, saving, artistName, albumName, onUpdateField, onSaveTrack }: TrackTableProps) {
   return (
     <div className="rounded-lg border overflow-x-auto">
-      <Table>
+      <Table className="table-fixed w-full">
         <TableHeader>
           <TableRow>
-            <TableHead className="w-12">#</TableHead>
+            <TableHead className="w-10 md:w-12">#</TableHead>
             <TableHead>Title</TableHead>
-            <TableHead>Artist</TableHead>
-            <TableHead>Genre</TableHead>
-            <TableHead className="w-16">Year</TableHead>
-            <TableHead className="w-12" />
+            <TableHead className="hidden md:table-cell w-[20%]">Artist</TableHead>
+            <TableHead className="hidden md:table-cell w-[15%]">Genre</TableHead>
+            <TableHead className="w-14 md:w-16">Year</TableHead>
+            <TableHead className="w-10 md:w-12" />
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -55,33 +55,33 @@ export function TrackTable({ tracks, saving, artistName, albumName, onUpdateFiel
             >
               <TableCell className="font-mono text-muted-foreground text-xs">
                 <span className="group/track inline-flex items-center gap-1">
-                  <span className="group-hover/track:hidden">
+                  <span className="hidden md:inline md:group-hover/track:hidden">
                     {String(getVal(track, "track") ?? "")}
                   </span>
                   <Link
                     href={`/reverb?artist=${encodeURIComponent(artistName)}&album=${encodeURIComponent(albumName)}&track=${idx + 1}`}
-                    className="hidden group-hover/track:inline-flex"
+                    className="inline-flex md:hidden md:group-hover/track:inline-flex"
                     title="Play in Reverb"
                   >
                     <Play className="h-3 w-3 fill-current" />
                   </Link>
                 </span>
               </TableCell>
-              <TableCell>
+              <TableCell className="truncate">
                 <Input
                   value={String(getVal(track, "title") ?? "")}
                   onChange={(e) => onUpdateField(idx, "title", e.target.value)}
                   className="h-7 text-xs border-none bg-transparent px-1 focus-visible:bg-background"
                 />
               </TableCell>
-              <TableCell>
+              <TableCell className="hidden md:table-cell truncate">
                 <Input
                   value={String(getVal(track, "artist") ?? "")}
                   onChange={(e) => onUpdateField(idx, "artist", e.target.value)}
                   className="h-7 text-xs border-none bg-transparent px-1 focus-visible:bg-background"
                 />
               </TableCell>
-              <TableCell>
+              <TableCell className="hidden md:table-cell truncate">
                 <Input
                   value={String(getVal(track, "genre") ?? "")}
                   onChange={(e) => onUpdateField(idx, "genre", e.target.value)}

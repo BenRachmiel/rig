@@ -51,7 +51,7 @@ export function AlbumCoverSection({ basePath, tracks, artistName, albumName }: A
   }, [basePath]);
 
   return (
-    <div className="flex items-center gap-4">
+    <div className="flex items-start gap-4">
       {coverSrc ? (
         <img
           key={coverKey}
